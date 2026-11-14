@@ -304,7 +304,7 @@ function historyAnswers(answers) {
 function startDraftForCustomer(customer, room) {
   const stored = getCustomer(customer.id) || createCustomer(customer.name, room, customer.id);
   const prev = previousAnswers(stored.id, room);
-  const answers = prev ? cloneAnswers(prev) : {};
+  const answers = prev ? cloneAnswers(prev) : {}; delete answers.memo;
   const resolvedRoom = room || stored.room || 'std';
   view.draft = {
     customerId: stored.id,
@@ -384,7 +384,7 @@ function switchRoomDialog() {
     .then(ok => {
       if (!ok || !view.draft) return;
       view.draft.room = other;
-      view.draft.answers = prev ? cloneAnswers(prev) : {};
+      view.draft.answers = prev ? cloneAnswers(prev) : {}; delete view.draft.answers.memo;
       view.draft.previous = cloneAnswers(view.draft.answers);
       view.draft.prefilled = Object.keys(view.draft.answers);
       view.draft.hadPrevious = !!prev;
