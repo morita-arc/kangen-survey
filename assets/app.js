@@ -40,7 +40,7 @@ function toast(message, kind) {
   toast._t = setTimeout(() => { el.className = 'toast'; }, 3200);
 }
 
-function confirmDialog(title, message, okLabel) {
+function confirmDialog(title, message, okLabel, okStyle) {
   return new Promise(resolve => {
     $('#modal-root').innerHTML =
       '<div class="modal-backdrop" data-act="modal-close" data-value="0">' +
@@ -49,7 +49,7 @@ function confirmDialog(title, message, okLabel) {
           '<p class="muted">' + esc(message) + '</p>' +
           '<div class="modal-actions">' +
             '<button class="btn ghost" data-act="modal-close" data-value="0">キャンセル</button>' +
-            '<button class="btn danger" data-act="modal-close" data-value="1">' + esc(okLabel || 'OK') + '</button>' +
+            '<button class="btn ' + (okStyle === 'primary' ? 'primary' : 'danger') + '" data-act="modal-close" data-value="1">' + esc(okLabel || 'OK') + '</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -380,7 +380,7 @@ function switchRoomDialog() {
   const c = getCustomer(view.draft.customerId);
   const other = view.draft.room === 'vip' ? 'std' : 'vip';
   const prev = c ? previousAnswers(c.id, other) : null;
-  confirmDialog('部屋を変更', ROOM_LABELS[other] + 'に切り替えます。' + (prev ? '前回の回答を読み込みます。' : 'この部屋の前回回答はありません。'), '切り替える')
+  confirmDialog('部屋を変更', ROOM_LABELS[other] + 'に切り替えます。' + (prev ? '前回の回答を読み込みます。' : 'この部屋の前回回答はありません。'), '切り替える', 'primary')
     .then(ok => {
       if (!ok || !view.draft) return;
       view.draft.room = other;
@@ -618,6 +618,7 @@ function settingsView() {
       '<details class="guide"><summary>使い方のヒント</summary>' +
         '<ul class="tips">' +
           '<li>お客様を選ぶと前回の回答が自動で入ります。変更する項目だけタップして送信できます。</li>' +
+          '<li>未回答の項目があっても「このまま送信」で送信できます。</li>' +
           '<li>「すべて解除」で選択をリセットできます。</li>' +
           '<li>集計は「今週／先週／今月／全期間」と「VIP／一般」で絞り込めます。</li>' +
           '<li>複数台で使う場合は、同じスプレッドシートURLを各タブレットに設定してください。</li>' +
@@ -642,15 +643,28 @@ function submitSurvey() {
   if (!d) return;
   const missing = missingRequired(d.answers, d.room);
   if (missing.length) {
-    toast('未回答の項目があります（' + missing[0].short + '）');
-    const card = $('[data-q="' + missing[0].id + '"]');
-    if (card) {
-      card.classList.add('missing');
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setTimeout(() => card.classList.remove('missing'), 1600);
-    }
+    const names = missing.slice(0, 3).map(q => q.short).join('、') + (missing.length > 3 ? ' ほか' : '');
+    confirmDialog('未回答があります', '未回答が' + missing.length + '件あります（' + names + '）。このまま送信しますか？', 'このまま送信', 'primary')
+      .then(ok => {
+        if (!ok) {
+          const card = $('[data-q="' + missing[0].id + '"]');
+          if (card) {
+            card.classList.add('missing');
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => card.classList.remove('missing'), 1600);
+          }
+          return;
+        }
+        if (view.draft === d) finalizeSubmit();
+      });
     return;
   }
+  finalizeSubmit();
+}
+
+function finalizeSubmit() {
+  const d = view.draft;
+  if (!d) return;
   const customer = getCustomer(d.customerId) || createCustomer(d.customerName, d.room);
   const submission = addSubmission({
     customerId: customer.id,
@@ -662,6 +676,7 @@ function submitSurvey() {
   view.draft = null;
   saveState();
   view.lastDone = {
+    id: submission.id,
     customerName: submission.customerName,
     room: submission.room,
     syncState: 'pending',
@@ -669,7 +684,7 @@ function submitSurvey() {
   };
   setScreen('done');
   syncAfterSubmit(submission).then(res => {
-    if (view.lastDone && view.lastDone.customerName === submission.customerName) {
+    if (view.lastDone && view.lastDone.id === submission.id) {
       view.lastDone.syncState = res.ok ? 'ok' : 'local';
       view.lastDone.syncMessage = res.ok
         ? 'Googleスプレッドシートへ送信しました'
