@@ -696,28 +696,55 @@ function finalizeSubmit() {
 }
 
 async function syncAfterSubmit(submission) {
-  if (!state.settings.sheetUrl) return { ok: false, reason: 'no-url' };
-  if (!navigator.onLine) return { ok: false, reason: 'offline' };
-  return postSubmission(submission);
+  if (!state.settings.sheetUrl) return { ok: false, reason: 'URLが未設定です' };
+  if (!navigator.onLine) return { ok: false, reason: 'オフラインです' };
+  const res = await postSubmission(submission);
+  if (!res.ok) view.sheetStatus = '送信失敗：' + (res.reason || '不明なエラー');
+  return res;
+}
+
+function markSynced(sub) {
+  sub.synced = true;
+  sub.source = sub.source || 'local';
+  saveState();
 }
 
 async function postSubmission(sub) {
   const url = state.settings.sheetUrl.trim();
-  const payload = { token: state.settings.token, type: 'submit', row: toSheetRow(sub) };
+  if (!url) return { ok: false, reason: 'URLが未設定です' };
+  const payload = JSON.stringify({ token: state.settings.token, type: 'submit', row: toSheetRow(sub) });
+  const encoded = encodeURIComponent(payload);
+
+  if (encoded.length <= 7000) {
+    const submitUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') +
+      'action=submit&token=' + encodeURIComponent(state.settings.token) + '&payload=' + encoded;
+    try {
+      const data = await jsonp(submitUrl, 25000);
+      if (data && data.ok) {
+        markSynced(sub);
+        return { ok: true, duplicate: !!data.duplicate };
+      }
+      return { ok: false, reason: (data && data.error) || 'シートが受け付けませんでした' };
+    } catch (err) {
+      return { ok: false, reason: err.message };
+    }
+  }
+
   try {
     await fetch(url, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
+      body: payload
     });
-    sub.synced = true;
-    sub.source = sub.source || 'local';
-    saveState();
-    return { ok: true };
   } catch (err) {
     return { ok: false, reason: err.message };
   }
+  await new Promise(r => setTimeout(r, 1500));
+  await pullFromSheet(true);
+  const stored = state.submissions.find(x => x.id === sub.id);
+  if (stored && stored.synced) return { ok: true };
+  return { ok: false, reason: '長文のため送信を確認できませんでした' };
 }
 
 function jsonp(url, timeoutMs) {
@@ -735,7 +762,7 @@ function jsonp(url, timeoutMs) {
     window[cb] = data => { cleanup(); resolve(data); };
     script.onerror = () => { cleanup(); reject(new Error('接続できませんでした')); };
     const timer = setTimeout(() => { cleanup(); reject(new Error('タイムアウトしました')); }, timeoutMs || 20000);
-    script.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'action=list&callback=' + cb + '&t=' + Date.now();
+    script.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'callback=' + encodeURIComponent(cb) + '&t=' + Date.now();
     document.body.appendChild(script);
   });
 }
@@ -743,7 +770,10 @@ function jsonp(url, timeoutMs) {
 async function pullFromSheet(silent) {
   if (!state.settings.sheetUrl) { if (!silent) toast('スプレッドシートURLが未設定です'); return 0; }
   try {
-    const data = await jsonp(state.settings.sheetUrl + (state.settings.sheetUrl.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(state.settings.token));
+    const base = state.settings.sheetUrl;
+    const listUrl = base + (base.indexOf('?') >= 0 ? '&' : '?') +
+      'action=list&token=' + encodeURIComponent(state.settings.token);
+    const data = await jsonp(listUrl);
     if (!data || data.ok !== true && !Array.isArray(data.rows)) throw new Error((data && data.error) || 'データを取得できませんでした');
     const rows = (data.rows || []).map(sheetRowToSubmission);
     const added = mergeRemoteSubmissions(rows);
@@ -764,12 +794,14 @@ async function pushUnsynced() {
   if (!list.length) { toast('未送信の回答はありません'); return 0; }
   if (!state.settings.sheetUrl) { toast('スプレッドシートURLが未設定です'); return 0; }
   let ok = 0;
+  let lastError = '';
   for (const sub of list) {
     const res = await postSubmission(sub);
     if (res.ok) ok++;
-    else break;
+    else lastError = res.reason || '';
   }
-  view.sheetStatus = ok + '件送信しました' + (ok < list.length ? '（' + (list.length - ok) + '件は未送信）' : '');
+  view.sheetStatus = ok + '件送信しました' +
+    (ok < list.length ? '（' + (list.length - ok) + '件は未送信' + (lastError ? '：' + lastError : '') + '）' : '');
   toast(view.sheetStatus);
   if (view.screen === 'settings' || view.screen === 'stats' || view.screen === 'home') render();
   return ok;
@@ -787,11 +819,16 @@ function testSheetConnection() {
   if (!state.settings.sheetUrl) { toast('URLを入力してください'); return; }
   view.sheetStatus = '接続を確認しています…';
   if (view.screen === 'settings') render();
-  jsonp(state.settings.sheetUrl + (state.settings.sheetUrl.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(state.settings.token), 15000)
+  jsonp(state.settings.sheetUrl + (state.settings.sheetUrl.indexOf('?') >= 0 ? '&' : '?') + 'action=selftest&token=' + encodeURIComponent(state.settings.token), 15000)
     .then(data => {
       if (data && data.ok) {
-        view.sheetStatus = '接続OK：' + (data.title ? '「' + data.title + '」' : 'シート') + ' に接続しました（' + (data.count || 0) + '行）';
-        toast('接続できました');
+        if (data.version >= 2) {
+          view.sheetStatus = '接続OK（送信準備完了）：' + (data.title ? '「' + data.title + '」' : 'シート') + '（' + (data.count || 0) + '行）';
+          toast('接続できました');
+        } else {
+          view.sheetStatus = '接続はできましたが、Apps Scriptが古い可能性があります。Code.gsを貼り直して「新しいデプロイ」をやり直してください。';
+          toast('スクリプトの再デプロイが必要です');
+        }
       } else {
         view.sheetStatus = '接続できましたが応答が不正です' + (data && data.error ? '（' + data.error + '）' : '');
         toast('応答を確認してください');

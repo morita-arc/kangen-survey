@@ -1,6 +1,6 @@
 /* 保存・集計用データ管理 */
 const STORE_KEY = 'kangen-survey-v1';
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.0.6';
 
 const SHEET_COLUMNS = [
   { key: 'id', label: '送信ID' },
@@ -191,9 +191,15 @@ function recomputeCustomers() {
 
 function mergeRemoteSubmissions(rows) {
   let added = 0;
-  const existing = new Set(state.submissions.map(s => s.id));
+  let changed = false;
+  const byId = new Map(state.submissions.map(s => [s.id, s]));
   (rows || []).forEach(r => {
-    if (!r || !r.id || existing.has(r.id)) return;
+    if (!r || !r.id) return;
+    const existingSub = byId.get(r.id);
+    if (existingSub) {
+      if (!existingSub.synced) { existingSub.synced = true; changed = true; }
+      return;
+    }
     const name = normName(r.customerName || '（不明）');
     let local = r.customerId ? getCustomer(r.customerId) : null;
     if (!local) local = findCustomerByName(name);
@@ -212,13 +218,11 @@ function mergeRemoteSubmissions(rows) {
       source: 'sheet'
     };
     state.submissions.push(sub);
-    existing.add(sub.id);
+    byId.set(sub.id, sub);
     added++;
   });
-  if (added) {
-    recomputeCustomers();
-    saveState();
-  }
+  if (added) recomputeCustomers();
+  if (added || changed) saveState();
   return added;
 }
 
