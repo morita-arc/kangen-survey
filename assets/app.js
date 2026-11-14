@@ -587,15 +587,16 @@ function settingsView() {
         '<button class="btn" data-act="sync-all">両方実行</button>' +
       '</div>' +
       '<p class="muted small" id="sync-status">' + esc(view.sheetStatus || '未同期の回答は' + unsynced + '件です') + '</p>' +
-      '<details class="guide"><summary>シート連携の設定方法（初回のみ）</summary>' +
+      '<details class="guide"><summary>シート連携の設定方法（初回・更新時）</summary>' +
         '<ol class="tips">' +
           '<li>スプレッドシートの「拡張機能」→「Apps Script」を開く</li>' +
-          '<li>「Code.gs（コピー用）」文書の全文をコピーして貼り付け、保存</li>' +
+          '<li>「Code.gs（最新版）」文書の全文をコピーして貼り付け、保存</li>' +
           '<li>関数 setupSheet を実行し、権限を承認する</li>' +
           '<li>「デプロイ」→「新しいデプロイ」→ ウェブアプリ（アクセス: 全員）</li>' +
           '<li>発行された「/exec」のURLを上に貼り付け →「接続テスト」</li>' +
+          '<li>設定済みの場合は「デプロイを管理」→ 編集 → バージョン: 新しいバージョン → デプロイ（URLは変わりません）</li>' +
         '</ol>' +
-        '<p class="small"><a class="link" href="https://docs.google.com/document/d/1_uIj-GoVJTBWqJevrEoKK4niRmTOXygD8VzzF6xJ8jA/edit" target="_blank" rel="noopener">Code.gs（コピー用）</a> ／ ' +
+        '<p class="small"><a class="link" href="https://docs.google.com/document/d/15_gK-emy8svSRKA8IDSgFecN4T1D8k5qQIRoX-oF9aE/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
         '<a class="link" href="https://docs.google.com/spreadsheets/d/1JXC-kQ4Mtnb1VI7TM35QB8lf8I-hp3v_doLsEv79lxA/edit" target="_blank" rel="noopener">スプレッドシート</a></p>' +
       '</details>' +
     '</section>' +

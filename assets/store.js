@@ -1,6 +1,6 @@
 /* 保存・集計用データ管理 */
 const STORE_KEY = 'kangen-survey-v1';
-const APP_VERSION = '1.0.6';
+const APP_VERSION = '1.0.7';
 
 const SHEET_COLUMNS = [
   { key: 'id', label: '送信ID' },
