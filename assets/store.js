@@ -1,6 +1,6 @@
 /* 保存・集計用データ管理 */
 const STORE_KEY = 'kangen-survey-v1';
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 const SHEET_COLUMNS = [
   { key: 'id', label: '送信ID' },
@@ -17,6 +17,7 @@ const SHEET_COLUMNS = [
   { qid: 'healingWear' },
   { qid: 'option' },
   { qid: 'condition' },
+  { key: 'conditionScore', label: '体調スコア' },
   { qid: 'memo' },
   { key: 'customerId', label: '顧客ID' },
   { key: 'tablet', label: '端末' }
@@ -230,6 +231,10 @@ function toSheetRow(sub) {
     if (c.qid) return answerText(sub, c.qid);
     if (c.key === 'roomLabel') return ROOM_LABELS[sub.room] || '';
     if (c.key === 'date') return fmtDateTime(sub.date);
+    if (c.key === 'conditionScore') {
+      const score = conditionScore(answerText(sub, 'condition'));
+      return score === null ? '' : String(score);
+    }
     return String(sub[c.key] || '');
   });
 }
@@ -280,6 +285,10 @@ function submissionsToCsv(list) {
     if (c.qid) return answerText(s, c.qid);
     if (c.key === 'roomLabel') return ROOM_LABELS[s.room] || '';
     if (c.key === 'date') return fmtDateTime(s.date);
+    if (c.key === 'conditionScore') {
+      const score = conditionScore(answerText(s, 'condition'));
+      return score === null ? '' : String(score);
+    }
     return s[c.key] === undefined || s[c.key] === null ? '' : String(s[c.key]);
   }));
   return [header].concat(rows).map(r => r.map(csvEscape).join(',')).join('\r\n');
