@@ -528,7 +528,7 @@ function statsView() {
           '<button class="' + (view.statsRoom === k ? 'on' : '') + '" data-act="stats-room" data-value="' + k + '">' + label + '</button>').join('') +
       '</div>' +
     '</div>' +
-    '<p class="muted small">集計範囲：' + esc(fmtDate(range.from.toISOString())) + ' 〜 ' + esc(fmtDate(new Date(range.to.getTime() - 1).toISOString())) + '</p>' +
+    '<p class="muted small">集計範囲：' + esc(fmtDate(range.from.toISOString())) + ' 〜 ' + esc(fmtDate(new Date(range.to.getTime() - 1).toISOString())) + ' ・ 週は土曜〜金曜</p>' +
     '<section class="kpis">' +
       kpi('回答数', agg.total + '<span class="unit">件</span>') +
       kpi('顧客数', agg.uniqueCustomers + '<span class="unit">名</span>') +
@@ -565,11 +565,7 @@ function settingsView() {
       '<h2>このタブレット</h2>' +
       '<label class="field"><span>端末名（スプレッドシートに記録されます）</span>' +
       '<input class="input" type="text" data-input="tablet-name" value="' + esc(s.tabletName) + '" placeholder="例）受付タブレット1"></label>' +
-      '<label class="field"><span>週の開始</span>' +
-      '<select class="input" data-input="week-start">' +
-        '<option value="1"' + (s.weekStart === 1 ? ' selected' : '') + '>月曜日</option>' +
-        '<option value="0"' + (s.weekStart === 0 ? ' selected' : '') + '>日曜日</option>' +
-      '</select></label>' +
+      '<p class="muted small">週の集計は土曜日〜金曜日で行います。</p>' +
     '</section>' +
 
     '<section class="panel">' +
@@ -1026,7 +1022,6 @@ function bindEvents() {
     if (key === 'sheet-url') { state.settings.sheetUrl = t.value.trim(); saveState(); return; }
     if (key === 'sheet-token') { state.settings.token = t.value; saveState(); return; }
     if (key === 'auto-sync') { state.settings.autoSync = t.checked; saveState(); return; }
-    if (key === 'week-start') { state.settings.weekStart = Number(t.value); saveState(); return; }
   });
 
   document.addEventListener('change', e => {
@@ -1047,10 +1042,6 @@ function bindEvents() {
     }
     if (t && t.dataset && t.dataset.input === 'auto-sync') {
       state.settings.autoSync = t.checked;
-      saveState();
-    }
-    if (t && t.dataset && t.dataset.input === 'week-start') {
-      state.settings.weekStart = Number(t.value);
       saveState();
     }
   });

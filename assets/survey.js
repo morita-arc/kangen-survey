@@ -90,9 +90,8 @@ function startOfDay(d) {
 }
 
 function startOfWeek(d, weekStart) {
-  const start = (weekStart === 0) ? 0 : 1;
   const x = startOfDay(d);
-  const diff = (x.getDay() - start + 7) % 7;
+  const diff = (x.getDay() + 1) % 7;
   x.setDate(x.getDate() - diff);
   return x;
 }
