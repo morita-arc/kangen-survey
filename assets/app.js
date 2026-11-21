@@ -16,6 +16,8 @@ const view = {
   entry: null,
   reportDate: todayKey(),
   reportIncludeDate: false,
+  calendar: null,
+  calendarLoading: false,
   invHistoryDate: todayKey()
 };
 
@@ -79,6 +81,10 @@ function setScreen(name) {
   view.screen = name;
   pendingScrollReset = true;
   render();
+  if ((name === 'inventory' || name === 'provide') && typeof ensureCalendar === 'function') {
+    const date = name === 'provide' && view.entry ? view.entry.date : todayKey();
+    setTimeout(() => ensureCalendar(date), 0);
+  }
 }
 
 function goHome() {
@@ -622,8 +628,9 @@ function settingsView() {
           '<li>発行された「/exec」のURLを上に貼り付け →「接続テスト」</li>' +
           '<li>設定済みの場合は「デプロイを管理」→ 編集 → バージョン: 新しいバージョン → デプロイ（URLは変わりません）</li>' +
         '</ol>' +
-        '<p class="small"><a class="link" href="https://docs.google.com/document/d/15_gK-emy8svSRKA8IDSgFecN4T1D8k5qQIRoX-oF9aE/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
+        '<p class="small"><a class="link" href="https://docs.google.com/document/d/1EA4g7Eoa3JS9wLhDU6HKWNMPP4Zzm63xFcII6bzDE-0/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
         '<a class="link" href="https://docs.google.com/spreadsheets/d/1JXC-kQ4Mtnb1VI7TM35QB8lf8I-hp3v_doLsEv79lxA/edit" target="_blank" rel="noopener">スプレッドシート</a></p>' +
+        '<p class="small">Googleカレンダーの「本日の予約」も同じURLから取得します。予定名に「様」が含まれるものを予約として表示します。Code.gs更新後は setupSheet を実行してカレンダーの権限を承認し、新しいバージョンで再デプロイしてください。</p>' +
       '</details>' +
     '</section>' +
 
@@ -849,8 +856,8 @@ function testSheetConnection() {
   jsonp(state.settings.sheetUrl + (state.settings.sheetUrl.indexOf('?') >= 0 ? '&' : '?') + 'action=selftest&token=' + encodeURIComponent(state.settings.token), 15000)
     .then(data => {
       if (data && data.ok) {
-        if (data.version >= 2) {
-          view.sheetStatus = '接続OK（送信準備完了）：' + (data.title ? '「' + data.title + '」' : 'シート') + '（' + (data.count || 0) + '行）';
+        if (data.version >= 3) {
+          view.sheetStatus = '接続OK（送信・予約連携）：' + (data.title ? '「' + data.title + '」' : 'シート') + '（' + (data.count || 0) + '行）';
           toast('接続できました');
         } else {
           view.sheetStatus = '接続はできましたが、Apps Scriptが古い可能性があります。Code.gsを貼り直して「新しいデプロイ」をやり直してください。';

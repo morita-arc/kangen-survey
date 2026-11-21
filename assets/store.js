@@ -1,6 +1,6 @@
 /* 保存・集計用データ管理 */
 const STORE_KEY = 'kangen-survey-v1';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 const SHEET_COLUMNS = [
   { key: 'id', label: '送信ID' },
@@ -237,6 +237,8 @@ function addStockMove(input) {
     qty: qty,
     customerId: input.customerId || '',
     customerName: normName(input.customerName || ''),
+    reservationId: input.reservationId || '',
+    reservationTitle: input.reservationTitle || '',
     memo: normName(input.memo || ''),
     createdAt: new Date().toISOString()
   };

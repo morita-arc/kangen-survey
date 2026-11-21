@@ -547,6 +547,35 @@ body:has(.entry-footer) .main { padding-bottom: 220px; }
 .perk-name { font-weight: 600; }
 .perk-qty { margin-left: auto; font-weight: 800; color: var(--green); }
 
+/* Calendar reservations */
+.res-head-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.res-summary { font-size: 12px; color: var(--ink-soft); margin-bottom: 8px; }
+.res-summary strong { color: var(--green); font-size: 15px; }
+.reservation-list { display: flex; flex-direction: column; }
+.reservation-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  background: transparent; border: 0; border-bottom: 1px dashed var(--line);
+  padding: 12px 2px; text-align: left; cursor: pointer;
+}
+.reservation-row:last-child { border-bottom: 0; }
+.reservation-row.selected { background: #eef5ee; border-radius: 12px; padding-left: 10px; padding-right: 10px; }
+.res-time { flex: none; width: 64px; display: flex; flex-direction: column; font-variant-numeric: tabular-nums; }
+.res-time strong { font-size: 17px; color: var(--green); }
+.res-time span { font-size: 11px; color: var(--ink-soft); }
+.res-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.res-name { font-weight: 800; font-size: 16px; }
+.res-sub { font-size: 11px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.res-status { flex: none; font-size: 11px; font-weight: 800; padding: 4px 9px; border-radius: 999px; }
+.res-status.todo { background: #fdf1d8; color: #8a5a12; }
+.res-status.done { background: #e5f0e6; color: #2f6f4f; }
+.res-selected {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: #eef5ee; border: 1px solid #cfe0cf; border-radius: 12px;
+  padding: 10px 14px; margin-bottom: 10px; font-size: 14px; font-weight: 700;
+}
+.res-selected .btn { margin-left: auto; }
+.cal-error { font-size: 13px; color: var(--ink-soft); }
+
 /* Responsive */
 @media (max-width: 1000px) {
   .quick { grid-template-columns: repeat(2, 1fr); }
@@ -580,6 +609,10 @@ body:has(.entry-footer) .main { padding-bottom: 220px; }
   .stock-qty { min-width: 58px; }
   .stock-qty strong { font-size: 21px; }
   .tab { font-size: 10px; }
+  .res-time { width: 52px; }
+  .res-name { font-size: 14px; }
+  .res-status { font-size: 10px; padding: 3px 7px; }
+  .res-sub { max-width: 180px; }
 }
 
 @media (min-width: 1100px) {

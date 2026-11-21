@@ -17,6 +17,93 @@ function moveQtyText(m) {
   return '+' + m.qty;
 }
 
+function findReservation(id) {
+  if (!view.calendar || !view.calendar.events) return null;
+  return view.calendar.events.find(ev => ev.id === id) || null;
+}
+
+function isReservationEntered(ev, date) {
+  const name = customerNameClean(ev.customerName);
+  return state.stockMoves.some(m => m.type === 'out' && m.date === date &&
+    (m.reservationId ? m.reservationId === ev.id : (name && customerNameClean(m.customerName) === name)));
+}
+
+async function ensureCalendar(date, force) {
+  if (!state.settings.sheetUrl) return;
+  const target = date || todayKey();
+  if (!force && view.calendar && view.calendar.date === target && view.calendar.fetchedAt &&
+      Date.now() - view.calendar.fetchedAt < 60000) return;
+  if (view.calendarLoading && view.calendarLoadingDate === target) return;
+  view.calendarLoading = true;
+  view.calendarLoadingDate = target;
+  updateReservationPanel();
+  const base = state.settings.sheetUrl;
+  const url = base + (base.indexOf('?') >= 0 ? '&' : '?') +
+    'action=calendar&token=' + encodeURIComponent(state.settings.token) + '&date=' + encodeURIComponent(target);
+  try {
+    const data = await jsonp(url, 20000);
+    if (data && data.ok && Array.isArray(data.events)) {
+      view.calendar = { date: target, events: data.events, fetchedAt: Date.now(), error: '' };
+    } else if (data && Array.isArray(data.rows)) {
+      view.calendar = { date: target, events: [], fetchedAt: 0, error: 'カレンダー連携にはCode.gsの更新と再デプロイが必要です' };
+    } else {
+      view.calendar = { date: target, events: [], fetchedAt: 0, error: (data && data.error) || '予約を取得できませんでした' };
+    }
+  } catch (err) {
+    view.calendar = { date: target, events: [], fetchedAt: 0, error: err.message };
+  }
+  view.calendarLoading = false;
+  view.calendarLoadingDate = '';
+  updateReservationPanel();
+}
+
+function updateReservationPanel() {
+  const el = document.getElementById('reservation-panel');
+  if (!el) return;
+  const date = view.screen === 'provide' && view.entry ? view.entry.date : todayKey();
+  el.outerHTML = reservationPanel(date, view.screen === 'provide' ? 'entry' : 'inventory');
+}
+
+function reservationPanel(date, mode) {
+  if (!state.settings.sheetUrl) return '';
+  const cal = view.calendar && view.calendar.date === date ? view.calendar : null;
+  const loading = view.calendarLoading && view.calendarLoadingDate === date;
+  const events = cal ? cal.events : [];
+  const enteredCount = events.filter(ev => isReservationEntered(ev, date)).length;
+  const selectedId = mode === 'entry' && view.entry ? view.entry.reservationId : '';
+  const isEntry = mode === 'entry';
+
+  let body = '';
+  if (loading && !cal) {
+    body = '<p class="empty">予約を読み込んでいます…</p>';
+  } else if (cal && cal.error) {
+    body = '<div class="cal-error"><p>' + esc(cal.error) + '</p>' +
+      '<p class="muted small">Apps Script の Code.gs を最新版にして「デプロイを管理」→ 新しいバージョンで再デプロイしてください。</p></div>';
+  } else if (!events.length) {
+    body = '<p class="empty">' + (cal ? 'この日の予約はありません。' : '予約を読み込めませんでした。') + '</p>';
+  } else {
+    body = '<div class="res-summary">未入力 <strong>' + (events.length - enteredCount) + '</strong>件 ・ 入力済み <strong>' + enteredCount + '</strong>件</div>' +
+      '<ul class="reservation-list">' + events.map(ev => {
+        const entered = isReservationEntered(ev, date);
+        const selected = selectedId && ev.id === selectedId;
+        const action = isEntry ? 'pick-reservation' : 'reservation-start';
+        return '<li><button class="reservation-row' + (selected ? ' selected' : '') + '" data-act="' + action + '" data-value="' + esc(ev.id) + '">' +
+          '<span class="res-time"><strong>' + esc(ev.start) + '</strong><span>' + esc(ev.end) + '</span></span>' +
+          '<span class="res-main"><span class="res-name">' + esc(ev.customerName) + ' 様</span>' +
+            '<span class="res-sub">' + (ev.room ? '<span class="badge ' + (ev.room === 'VIP' ? 'vip' : 'std') + '">' + esc(ev.room) + '</span> ' : '') + esc(ev.title) + '</span></span>' +
+          '<span class="res-status ' + (entered ? 'done' : 'todo') + '">' + (entered ? '入力済み' : '未入力') + '</span>' +
+        '</button></li>';
+      }).join('') + '</ul>';
+  }
+
+  return '<section class="panel reservation-panel" id="reservation-panel">' +
+    '<div class="panel-head"><h2>' + (isEntry ? '予約から選ぶ' : '本日の予約') + '</h2>' +
+      '<div class="res-head-actions"><span class="muted small">' + esc(reportDateLabel(date)) + '</span>' +
+      '<button class="link small" data-act="calendar-refresh">再読み込み</button></div></div>' +
+    body +
+  '</section>';
+}
+
 function inventoryView() {
   const today = todayKey();
   const products = sortedProducts(true);
@@ -46,6 +133,8 @@ function inventoryView() {
       kpi('在庫あり', inStock + '<span class="unit">商品</span>') +
       kpi('在庫切れ', zero + '<span class="unit">商品</span>') +
     '</section>' +
+
+    reservationPanel(today, 'inventory') +
 
     '<section class="inv-actions">' +
       '<button class="inv-action" data-act="inv-entry" data-value="in"><span class="inv-action-title">仕入を記録</span><span class="inv-action-sub">いつ・何個入ったか</span></button>' +
@@ -121,9 +210,11 @@ function entryView(screen) {
   const customerNames = Array.from(new Set(state.customers.map(c => c.name))).sort((a, b) => a.localeCompare(b, 'ja'));
 
   return '' +
+    (isOut ? reservationPanel(e.date, 'entry') : '') +
     '<section class="panel entry-meta">' +
       (isOut
-        ? '<label class="field"><span>お客様名</span>' +
+        ? (e.reservationId ? '<div class="res-selected"><span>予約: ' + esc(e.reservationTime || '') + ' ' + esc(e.customerName) + ' 様</span><button class="btn small ghost" data-act="clear-reservation">予約を解除</button></div>' : '') +
+          '<label class="field"><span>お客様名' + (e.reservationId ? '（予約から入力）' : '') + '</span>' +
           '<input id="entry-customer" class="input" type="text" list="customer-names" autocomplete="off" data-input="entry-customer" value="' + esc(e.customerName) + '" placeholder="お名前を入力または選択">' +
           '<datalist id="customer-names">' + customerNames.map(n => '<option value="' + esc(n) + '"></option>').join('') + '</datalist>' +
           '<span class="muted small">登録済みの名前を選ぶか、新しく入力してください（自動で顧客登録されます）</span></label>'
@@ -198,7 +289,15 @@ function commitEntry(items, customerName) {
   e.saving = true;
   let customer = null;
   if (e.kind === 'out') {
-    customer = findCustomerByName(customerName) || state.customers.find(c => customerNameClean(c.name) === customerName) || createCustomer(customerName, 'std');
+    customer = findCustomerByName(customerName) || state.customers.find(c => customerNameClean(c.name) === customerName);
+    if (!customer) {
+      const candidates = state.customers.filter(c => {
+        const n = customerNameClean(c.name);
+        return n && (n.indexOf(customerName) === 0 || customerName.indexOf(n) === 0);
+      });
+      if (candidates.length === 1) customer = candidates[0];
+    }
+    if (!customer) customer = createCustomer(customerName, 'std');
   }
   items.forEach(x => {
     addStockMove({
@@ -208,10 +307,13 @@ function commitEntry(items, customerName) {
       qty: x.qty,
       customerId: customer ? customer.id : '',
       customerName: customer ? customer.name : '',
+      reservationId: e.reservationId || '',
+      reservationTitle: e.reservationTitle || '',
       memo: e.memo
     });
   });
   view.entry = null;
+  view.calendar = null;
   toast(items.length + '件記録しました');
   setScreen('inventory');
 }
@@ -413,6 +515,42 @@ function handleInventoryClick(e) {
   const value = target.dataset.value;
   switch (act) {
     case 'inv-entry': startEntry(value); break;
+    case 'pick-reservation': {
+      const ev = findReservation(value);
+      if (ev && view.entry) {
+        view.entry.customerName = ev.customerName;
+        view.entry.reservationId = ev.id;
+        view.entry.reservationTitle = ev.title;
+        view.entry.reservationTime = ev.start + '〜' + ev.end;
+        render();
+      }
+      break;
+    }
+    case 'reservation-start': {
+      const ev = findReservation(value);
+      if (ev) {
+        startEntry('out');
+        view.entry.customerName = ev.customerName;
+        view.entry.reservationId = ev.id;
+        view.entry.reservationTitle = ev.title;
+        view.entry.reservationTime = ev.start + '〜' + ev.end;
+        render();
+      }
+      break;
+    }
+    case 'clear-reservation':
+      if (view.entry) {
+        view.entry.reservationId = '';
+        view.entry.reservationTitle = '';
+        view.entry.reservationTime = '';
+      }
+      render();
+      break;
+    case 'calendar-refresh': {
+      const d = view.screen === 'provide' && view.entry ? view.entry.date : todayKey();
+      ensureCalendar(d, true);
+      break;
+    }
     case 'inv-report':
       view.reportDate = todayKey();
       setScreen('report');
@@ -467,6 +605,7 @@ function handleInventoryClick(e) {
         .then(ok => {
           if (!ok) return;
           deleteStockMove(value);
+          view.calendar = null;
           toast('削除しました');
           render();
         });
@@ -483,9 +622,10 @@ function handleInventoryInput(e) {
   if (key === 'entry-date') {
     if (view.entry) view.entry.date = t.value || todayKey();
     render();
+    if (view.entry) ensureCalendar(view.entry.date);
     return;
   }
-  if (key === 'entry-memo') {
+  if (key === "entry-memo") {
     if (view.entry) view.entry.memo = t.value;
     return;
   }
