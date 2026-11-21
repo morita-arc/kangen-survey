@@ -16,6 +16,8 @@ const view = {
   entry: null,
   reportDate: todayKey(),
   reportIncludeDate: false,
+  reservationDate: '',
+  linkReservationId: '',
   calendar: null,
   calendarLoading: false,
   invHistoryDate: todayKey()
@@ -82,7 +84,7 @@ function setScreen(name) {
   pendingScrollReset = true;
   render();
   if ((name === 'inventory' || name === 'provide') && typeof ensureCalendar === 'function') {
-    const date = name === 'provide' && view.entry ? view.entry.date : todayKey();
+    const date = name === 'provide' && view.entry ? view.entry.date : (view.reservationDate || todayKey());
     setTimeout(() => ensureCalendar(date), 0);
   }
 }
@@ -628,9 +630,9 @@ function settingsView() {
           '<li>発行された「/exec」のURLを上に貼り付け →「接続テスト」</li>' +
           '<li>設定済みの場合は「デプロイを管理」→ 編集 → バージョン: 新しいバージョン → デプロイ（URLは変わりません）</li>' +
         '</ol>' +
-        '<p class="small"><a class="link" href="https://docs.google.com/document/d/1EA4g7Eoa3JS9wLhDU6HKWNMPP4Zzm63xFcII6bzDE-0/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
+        '<p class="small"><a class="link" href="https://docs.google.com/document/d/1uK3eR5caUKJTAv5WmjERH8s3gN8ifevgjxyHJh2RUyg/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
         '<a class="link" href="https://docs.google.com/spreadsheets/d/1JXC-kQ4Mtnb1VI7TM35QB8lf8I-hp3v_doLsEv79lxA/edit" target="_blank" rel="noopener">スプレッドシート</a></p>' +
-        '<p class="small">Googleカレンダーの「本日の予約」も同じURLから取得します。予定名に「様」が含まれるものを予約として表示します。Code.gs更新後は setupSheet を実行してカレンダーの権限を承認し、新しいバージョンで再デプロイしてください。</p>' +
+        '<p class="small">Googleカレンダーの予約も同じURLから取得します。既定では bran-room@nse-ed.com が作成した「様」付きの予定だけを表示します。予約名はひらがな・カタカナの違いを自動照合し、候補を表示します。違う場合は予約一覧の「顧客を紐付け」から選べます（過去の日付も可）。Code.gs更新後は setupSheet を実行してカレンダーの権限を承認し、新しいバージョンで再デプロイしてください。</p>' +
       '</details>' +
     '</section>' +
 

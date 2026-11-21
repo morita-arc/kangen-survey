@@ -22,10 +22,35 @@ function findReservation(id) {
   return view.calendar.events.find(ev => ev.id === id) || null;
 }
 
+function reservationCustomerInfo(ev) {
+  const linkedId = reservationLinkId(ev);
+  const linked = linkedId ? getCustomer(linkedId) : null;
+  const candidates = matchCustomerCandidates(ev.customerName, state.customers);
+  if (linked) return { customer: linked, source: 'linked', candidates: candidates };
+  const move = state.stockMoves.find(m => m.type === 'out' && m.reservationId && m.reservationId === ev.id && m.customerId);
+  if (move && getCustomer(move.customerId)) {
+    return { customer: getCustomer(move.customerId), source: 'move', candidates: candidates };
+  }
+  if (candidates.length) {
+    const top = candidates[0];
+    const same = candidates.filter(c => c.score === top.score).length;
+    if (same === 1 && top.reason === 'exact') return { customer: top.customer, source: 'exact', candidates: candidates };
+    if (same === 1 && (top.reason === 'prefix' || top.reason === 'fuzzy')) {
+      return { customer: top.customer, source: 'candidate', candidates: candidates };
+    }
+  }
+  return { customer: null, source: '', candidates: candidates };
+}
+
 function isReservationEntered(ev, date) {
   const name = customerNameClean(ev.customerName);
-  return state.stockMoves.some(m => m.type === 'out' && m.date === date &&
-    (m.reservationId ? m.reservationId === ev.id : (name && customerNameClean(m.customerName) === name)));
+  const info = reservationCustomerInfo(ev);
+  return state.stockMoves.some(m => {
+    if (m.type !== 'out' || m.date !== date) return false;
+    if (m.reservationId && m.reservationId === ev.id) return true;
+    if (info.customer && m.customerId && m.customerId === info.customer.id) return true;
+    return !m.reservationId && name && customerNameClean(m.customerName) === name;
+  });
 }
 
 async function ensureCalendar(date, force) {
@@ -60,8 +85,28 @@ async function ensureCalendar(date, force) {
 function updateReservationPanel() {
   const el = document.getElementById('reservation-panel');
   if (!el) return;
-  const date = view.screen === 'provide' && view.entry ? view.entry.date : todayKey();
+  const date = view.screen === 'provide' && view.entry ? view.entry.date : (view.reservationDate || todayKey());
   el.outerHTML = reservationPanel(date, view.screen === 'provide' ? 'entry' : 'inventory');
+}
+
+function reservationLinkRow(ev, info) {
+  const linked = info.customer;
+  let label = '顧客未紐付け';
+  let cls = '';
+  let action = '紐付け';
+  if (linked) {
+    label = (info.source === 'linked' ? '顧客' : '候補') + ': ' + linked.name;
+    cls = info.source === 'linked' ? 'done' : 'candidate';
+    action = info.source === 'linked' ? '変更' : '確認';
+  } else if (info.candidates.length > 1) {
+    label = '候補が' + info.candidates.length + '名';
+    cls = 'candidate';
+    action = '選ぶ';
+  }
+  return '<div class="res-link-row">' +
+    '<span class="res-linked ' + cls + '">' + esc(label) + '</span>' +
+    '<button class="link small" data-act="reservation-link" data-value="' + esc(ev.id) + '">' + action + '</button>' +
+  '</div>';
 }
 
 function reservationPanel(date, mode) {
@@ -72,6 +117,14 @@ function reservationPanel(date, mode) {
   const enteredCount = events.filter(ev => isReservationEntered(ev, date)).length;
   const selectedId = mode === 'entry' && view.entry ? view.entry.reservationId : '';
   const isEntry = mode === 'entry';
+  const isToday = date === todayKey();
+  const dateNav = isEntry ? '' :
+    '<div class="date-nav res-date-nav">' +
+      '<button class="btn small" data-act="res-shift" data-value="-1">‹ 前日</button>' +
+      '<input class="input" type="date" data-input="res-date" value="' + esc(date) + '">' +
+      '<button class="btn small" data-act="res-shift" data-value="1">翌日 ›</button>' +
+      '<button class="btn small ghost" data-act="res-today">今日</button>' +
+    '</div>';
 
   let body = '';
   if (loading && !cal) {
@@ -87,19 +140,24 @@ function reservationPanel(date, mode) {
         const entered = isReservationEntered(ev, date);
         const selected = selectedId && ev.id === selectedId;
         const action = isEntry ? 'pick-reservation' : 'reservation-start';
-        return '<li><button class="reservation-row' + (selected ? ' selected' : '') + '" data-act="' + action + '" data-value="' + esc(ev.id) + '">' +
-          '<span class="res-time"><strong>' + esc(ev.start) + '</strong><span>' + esc(ev.end) + '</span></span>' +
-          '<span class="res-main"><span class="res-name">' + esc(ev.customerName) + ' 様</span>' +
-            '<span class="res-sub">' + (ev.room ? '<span class="badge ' + (ev.room === 'VIP' ? 'vip' : 'std') + '">' + esc(ev.room) + '</span> ' : '') + esc(ev.title) + '</span></span>' +
-          '<span class="res-status ' + (entered ? 'done' : 'todo') + '">' + (entered ? '入力済み' : '未入力') + '</span>' +
-        '</button></li>';
+        const info = reservationCustomerInfo(ev);
+        return '<li class="reservation-item">' +
+          '<button class="reservation-row' + (selected ? ' selected' : '') + '" data-act="' + action + '" data-value="' + esc(ev.id) + '">' +
+            '<span class="res-time"><strong>' + esc(ev.start) + '</strong><span>' + esc(ev.end) + '</span></span>' +
+            '<span class="res-main"><span class="res-name">' + esc(ev.customerName) + ' 様</span>' +
+              '<span class="res-sub">' + (ev.room ? '<span class="badge ' + (ev.room === 'VIP' ? 'vip' : 'std') + '">' + esc(ev.room) + '</span> ' : '') + esc(ev.title) + '</span></span>' +
+            '<span class="res-status ' + (entered ? 'done' : 'todo') + '">' + (entered ? '入力済み' : '未入力') + '</span>' +
+          '</button>' +
+          reservationLinkRow(ev, info) +
+        '</li>';
       }).join('') + '</ul>';
   }
 
   return '<section class="panel reservation-panel" id="reservation-panel">' +
-    '<div class="panel-head"><h2>' + (isEntry ? '予約から選ぶ' : '本日の予約') + '</h2>' +
+    '<div class="panel-head"><h2>' + (isEntry ? '予約から選ぶ' : (isToday ? '本日の予約' : '予約')) + '</h2>' +
       '<div class="res-head-actions"><span class="muted small">' + esc(reportDateLabel(date)) + '</span>' +
       '<button class="link small" data-act="calendar-refresh">再読み込み</button></div></div>' +
+    dateNav +
     body +
   '</section>';
 }
@@ -134,7 +192,7 @@ function inventoryView() {
       kpi('在庫切れ', zero + '<span class="unit">商品</span>') +
     '</section>' +
 
-    reservationPanel(today, 'inventory') +
+    reservationPanel(view.reservationDate || today, 'inventory') +
 
     '<section class="inv-actions">' +
       '<button class="inv-action" data-act="inv-entry" data-value="in"><span class="inv-action-title">仕入を記録</span><span class="inv-action-sub">いつ・何個入ったか</span></button>' +
@@ -184,17 +242,36 @@ function fmtTime(iso) {
   return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
 }
 
-function startEntry(kind) {
+function startEntry(kind, date) {
   view.entry = {
     kind: kind,
-    date: todayKey(),
+    date: date || todayKey(),
+    customerId: '',
     customerName: '',
+    reservationId: '',
+    reservationName: '',
+    reservationTitle: '',
+    reservationTime: '',
+    matchSource: '',
     memo: '',
     qty: {},
     saving: false
   };
   const screen = kind === 'out' ? 'provide' : kind === 'in' ? 'purchase' : 'collect';
   setScreen(screen);
+}
+
+function applyReservationToEntry(ev, date) {
+  if (!view.entry || !ev) return;
+  const info = reservationCustomerInfo(ev);
+  if (date) view.entry.date = date;
+  view.entry.reservationId = ev.id;
+  view.entry.reservationName = ev.customerName;
+  view.entry.reservationTitle = ev.title;
+  view.entry.reservationTime = ev.start + '〜' + ev.end;
+  view.entry.customerId = info.customer ? info.customer.id : '';
+  view.entry.customerName = info.customer ? info.customer.name : ev.customerName;
+  view.entry.matchSource = info.customer ? info.source : '';
 }
 
 function entryView(screen) {
@@ -208,16 +285,20 @@ function entryView(screen) {
   const total = products.reduce((s, p) => s + (Number(e.qty[p.id]) || 0), 0);
   const isOut = kind === 'out';
   const customerNames = Array.from(new Set(state.customers.map(c => c.name))).sort((a, b) => a.localeCompare(b, 'ja'));
+  const linkedCustomer = e.customerId ? getCustomer(e.customerId) : null;
 
   return '' +
     (isOut ? reservationPanel(e.date, 'entry') : '') +
     '<section class="panel entry-meta">' +
       (isOut
-        ? (e.reservationId ? '<div class="res-selected"><span>予約: ' + esc(e.reservationTime || '') + ' ' + esc(e.customerName) + ' 様</span><button class="btn small ghost" data-act="clear-reservation">予約を解除</button></div>' : '') +
+        ? (e.reservationId ? '<div class="res-selected"><span>予約: ' + esc(e.reservationTime || '') + ' ' + esc(e.reservationName || e.customerName) + ' 様</span>' +
+            (linkedCustomer ? '<span class="res-linked-inline">' + (e.matchSource === 'candidate' ? '候補' : '顧客') + ': ' + esc(linkedCustomer.name) + '</span>' : '') +
+            '<button class="btn small ghost" data-act="reservation-link" data-value="' + esc(e.reservationId) + '">顧客を変更</button>' +
+            '<button class="btn small ghost" data-act="clear-reservation">予約を解除</button></div>' : '') +
           '<label class="field"><span>お客様名' + (e.reservationId ? '（予約から入力）' : '') + '</span>' +
           '<input id="entry-customer" class="input" type="text" list="customer-names" autocomplete="off" data-input="entry-customer" value="' + esc(e.customerName) + '" placeholder="お名前を入力または選択">' +
           '<datalist id="customer-names">' + customerNames.map(n => '<option value="' + esc(n) + '"></option>').join('') + '</datalist>' +
-          '<span class="muted small">登録済みの名前を選ぶか、新しく入力してください（自動で顧客登録されます）</span></label>'
+          '<span class="muted small">登録済みの名前を選ぶか、新しく入力してください（自動で顧客登録されます）。予約名のひらがな・カタカナは自動照合します。</span></label>'
         : '') +
       '<label class="field"><span>日付（過去の日付も選べます）</span>' +
         '<input class="input" type="date" data-input="entry-date" value="' + esc(e.date) + '"></label>' +
@@ -289,14 +370,9 @@ function commitEntry(items, customerName) {
   e.saving = true;
   let customer = null;
   if (e.kind === 'out') {
-    customer = findCustomerByName(customerName) || state.customers.find(c => customerNameClean(c.name) === customerName);
-    if (!customer) {
-      const candidates = state.customers.filter(c => {
-        const n = customerNameClean(c.name);
-        return n && (n.indexOf(customerName) === 0 || customerName.indexOf(n) === 0);
-      });
-      if (candidates.length === 1) customer = candidates[0];
-    }
+    customer = e.customerId ? getCustomer(e.customerId) : null;
+    if (!customer) customer = findCustomerByName(customerName);
+    if (!customer) customer = bestCustomerForName(customerName, state.customers, true);
     if (!customer) customer = createCustomer(customerName, 'std');
   }
   items.forEach(x => {
@@ -312,11 +388,85 @@ function commitEntry(items, customerName) {
       memo: e.memo
     });
   });
+  if (customer && e.reservationId) {
+    linkReservation({ id: e.reservationId, customerName: e.reservationName || customerName }, customer.id, e.date);
+    view.reservationDate = e.date;
+  }
   view.entry = null;
   view.calendar = null;
   toast(items.length + '件記録しました');
   setScreen('inventory');
 }
+
+function openReservationLink(id) {
+  const ev = findReservation(id);
+  if (!ev) return;
+  view.linkReservationId = id;
+  const info = reservationCustomerInfo(ev);
+  const linked = reservationLinkId(ev) ? info.customer : null;
+  const candidates = info.candidates.slice(0, 5);
+  const customers = state.customers.slice().sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  const reasonLabel = { exact: '一致', prefix: '名字が一致', fuzzy: '表記ゆれ' };
+  $('#modal-root').innerHTML =
+    '<div class="modal-backdrop" data-act="modal-close" data-value="0">' +
+      '<div class="modal link-modal">' +
+        '<h2>予約の顧客を紐付け</h2>' +
+        '<p class="muted">予約名: <strong>' + esc(ev.customerName) + ' 様</strong>' +
+          (linked ? '<br>現在: <strong>' + esc(linked.name) + '</strong>' : '') + '</p>' +
+        (candidates.length
+          ? '<div class="link-candidates"><span class="muted small">候補</span>' +
+              candidates.map(c => '<button class="link-candidate" data-act="link-pick" data-value="' + esc(c.customer.id) + '">' +
+                '<strong>' + esc(c.customer.name) + '</strong><span>' + esc(reasonLabel[c.reason] || '') + '</span></button>').join('') +
+            '</div>'
+          : '') +
+        '<label class="field"><span>顧客を検索</span>' +
+          '<input id="link-search" class="input" type="text" data-input="link-search" autocomplete="off" placeholder="名前の一部を入力"></label>' +
+        (customers.length
+          ? '<ul class="link-list" id="link-customer-list">' + customers.map(c =>
+              '<li data-name="' + esc(nameMatchKey(c.name)) + '"><button data-act="link-pick" data-value="' + esc(c.id) + '">' +
+                '<span class="link-name">' + esc(c.name) + '</span>' +
+                '<span class="link-meta">' + (c.room === 'vip' ? 'VIP' : '一般') + ' ・ ' + (c.visits || 0) + '回</span>' +
+              '</button></li>').join('') + '</ul>'
+          : '<p class="empty">まだ顧客がいません。提供画面で名前を入力すると登録されます。</p>') +
+        '<div class="modal-actions">' +
+          (linked ? '<button class="btn ghost danger-text" data-act="link-clear" data-value="' + esc(id) + '">紐付けを解除</button>' : '') +
+          '<button class="btn ghost" data-act="modal-close" data-value="0">キャンセル</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  setTimeout(() => { const el = $('#link-search'); if (el) el.focus(); }, 50);
+}
+
+function pickReservationLink(customerId) {
+  const ev = findReservation(view.linkReservationId);
+  const customer = getCustomer(customerId);
+  if (!ev || !customer) return;
+  const date = view.calendar ? view.calendar.date : todayKey();
+  linkReservation(ev, customer.id, date);
+  if (view.entry && view.entry.reservationId === ev.id) {
+    view.entry.customerId = customer.id;
+    view.entry.customerName = customer.name;
+    view.entry.matchSource = 'linked';
+  }
+  $('#modal-root').innerHTML = '';
+  toast(customer.name + ' 様に紐付けました');
+  render();
+}
+
+function clearReservationLink(id) {
+  const ev = findReservation(id);
+  if (!ev) return;
+  unlinkReservation(ev);
+  if (view.entry && view.entry.reservationId === ev.id) {
+    view.entry.customerId = '';
+    view.entry.customerName = ev.customerName;
+    view.entry.matchSource = '';
+  }
+  $('#modal-root').innerHTML = '';
+  toast('紐付けを解除しました');
+  render();
+}
+
 
 function productsView() {
   const products = state.products.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0));
@@ -518,10 +668,7 @@ function handleInventoryClick(e) {
     case 'pick-reservation': {
       const ev = findReservation(value);
       if (ev && view.entry) {
-        view.entry.customerName = ev.customerName;
-        view.entry.reservationId = ev.id;
-        view.entry.reservationTitle = ev.title;
-        view.entry.reservationTime = ev.start + '〜' + ev.end;
+        applyReservationToEntry(ev);
         render();
       }
       break;
@@ -529,25 +676,45 @@ function handleInventoryClick(e) {
     case 'reservation-start': {
       const ev = findReservation(value);
       if (ev) {
-        startEntry('out');
-        view.entry.customerName = ev.customerName;
-        view.entry.reservationId = ev.id;
-        view.entry.reservationTitle = ev.title;
-        view.entry.reservationTime = ev.start + '〜' + ev.end;
+        const date = view.reservationDate || todayKey();
+        startEntry('out', date);
+        applyReservationToEntry(ev, date);
         render();
       }
       break;
     }
+    case 'reservation-link':
+      openReservationLink(value);
+      break;
+    case 'link-pick':
+      pickReservationLink(value);
+      break;
+    case 'link-clear':
+      clearReservationLink(value);
+      break;
+    case 'res-shift': {
+      const base = view.reservationDate || todayKey();
+      view.reservationDate = shiftDateKey(base, Number(value) || 0);
+      ensureCalendar(view.reservationDate);
+      render();
+      break;
+    }
+    case 'res-today':
+      view.reservationDate = todayKey();
+      ensureCalendar(view.reservationDate);
+      render();
+      break;
     case 'clear-reservation':
       if (view.entry) {
         view.entry.reservationId = '';
+        view.entry.reservationName = '';
         view.entry.reservationTitle = '';
         view.entry.reservationTime = '';
       }
       render();
       break;
     case 'calendar-refresh': {
-      const d = view.screen === 'provide' && view.entry ? view.entry.date : todayKey();
+      const d = view.screen === 'provide' && view.entry ? view.entry.date : (view.reservationDate || todayKey());
       ensureCalendar(d, true);
       break;
     }
@@ -630,7 +797,25 @@ function handleInventoryInput(e) {
     return;
   }
   if (key === 'entry-customer') {
-    if (view.entry) view.entry.customerName = t.value;
+    if (view.entry) {
+      view.entry.customerName = t.value;
+      view.entry.customerId = '';
+      view.entry.matchSource = '';
+    }
+    return;
+  }
+  if (key === 'res-date') {
+    if (!t.value) return;
+    view.reservationDate = t.value;
+    ensureCalendar(view.reservationDate);
+    render();
+    return;
+  }
+  if (key === 'link-search') {
+    const q = nameMatchKey(t.value);
+    document.querySelectorAll('#link-customer-list [data-name]').forEach(li => {
+      li.hidden = !!q && li.dataset.name.indexOf(q) < 0;
+    });
     return;
   }
   if (key === 'entry-qty') {
@@ -662,7 +847,7 @@ document.addEventListener('click', handleInventoryClick);
 document.addEventListener('input', handleInventoryInput);
 document.addEventListener('change', e => {
   const t = e.target;
-  if (t && t.dataset && (t.dataset.input === 'entry-date' || t.dataset.input === 'report-date')) {
+  if (t && t.dataset && (t.dataset.input === 'entry-date' || t.dataset.input === 'report-date' || t.dataset.input === 'res-date')) {
     handleInventoryInput(e);
   }
   if (t && t.dataset && t.dataset.input === 'report-include-date') {

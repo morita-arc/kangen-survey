@@ -6,6 +6,80 @@ function customerNameClean(name) {
   return normName(name).replace(/\s*様$/, '');
 }
 
+function nameMatchKey(name) {
+  let s = String(name || '');
+  if (s.normalize) s = s.normalize('NFKC');
+  s = s.replace(/[\u30A1-\u30F6]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+  s = s.replace(/新規|会員|VIP|一般|HPB|ホットペッパー|ビューティー|予約/gi, '');
+  s = s.replace(/[\s　・,，.．、。!！?？「」『』【】\[\]()（）]/g, '');
+  s = s.replace(/(様|さん|殿|氏)$/, '');
+  s = s.replace(/[ー〜～\-－]/g, '');
+  return s.trim();
+}
+
+function nameDistance(a, b) {
+  const s = String(a || ''), t = String(b || '');
+  if (!s.length) return t.length;
+  if (!t.length) return s.length;
+  let prev = Array.from({ length: t.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= s.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= t.length; j++) {
+      const cost = s.charAt(i - 1) === t.charAt(j - 1) ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[t.length];
+}
+
+function matchCustomerCandidates(name, customers) {
+  const key = nameMatchKey(name);
+  if (!key) return [];
+  const list = [];
+  (customers || []).forEach(c => {
+    if (!c || !c.name) return;
+    const ck = nameMatchKey(c.name);
+    if (!ck) return;
+    let score = 0;
+    let reason = '';
+    if (ck === key) {
+      score = 100;
+      reason = 'exact';
+    } else {
+      const short = Math.min(ck.length, key.length);
+      if (short >= 2 && (ck.indexOf(key) === 0 || key.indexOf(ck) === 0)) {
+        score = 80;
+        reason = 'prefix';
+      } else {
+        const d = nameDistance(key, ck);
+        const max = Math.max(key.length, ck.length);
+        const allow = max <= 3 ? 1 : 2;
+        const ratio = max <= 3 ? 0.34 : 0.5;
+        if (d <= allow && d / max <= ratio) {
+          score = 60 - d * 5;
+          reason = 'fuzzy';
+        }
+      }
+    }
+    if (score) list.push({ customer: c, score: score, reason: reason });
+  });
+  return list.sort((a, b) => b.score - a.score || String(a.customer.name).localeCompare(String(b.customer.name), 'ja'));
+}
+
+function bestCustomerForName(name, customers, strict) {
+  const candidates = matchCustomerCandidates(name, customers);
+  if (!candidates.length) return null;
+  if (candidates.length === 1) return (!strict || candidates[0].reason !== 'fuzzy') ? candidates[0].customer : null;
+  if (candidates[0].reason === 'exact' && candidates.filter(c => c.score === candidates[0].score).length === 1) {
+    return candidates[0].customer;
+  }
+  if (candidates[0].reason === 'prefix' && candidates.filter(c => c.score === candidates[0].score).length === 1) {
+    return candidates[0].customer;
+  }
+  return null;
+}
+
 function customerLabel(name) {
   const n = customerNameClean(name);
   return n ? n + '様' : '';

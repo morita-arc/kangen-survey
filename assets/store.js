@@ -1,6 +1,6 @@
 /* 保存・集計用データ管理 */
 const STORE_KEY = 'kangen-survey-v1';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 const SHEET_COLUMNS = [
   { key: 'id', label: '送信ID' },
@@ -34,6 +34,7 @@ function defaultState() {
     submissions: [],
     products: [],
     stockMoves: [],
+    reservationLinks: { names: {}, events: {} },
     settings: {
       sheetUrl: '',
       token: '',
@@ -47,6 +48,14 @@ function defaultState() {
 
 let state = loadState();
 
+function normalizeReservationLinks(raw) {
+  const links = raw && typeof raw === 'object' ? raw : {};
+  return {
+    names: links.names && typeof links.names === 'object' ? links.names : {},
+    events: links.events && typeof links.events === 'object' ? links.events : {}
+  };
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -59,6 +68,7 @@ function loadState() {
       submissions: Array.isArray(parsed.submissions) ? parsed.submissions : [],
       products: Array.isArray(parsed.products) ? parsed.products : [],
       stockMoves: Array.isArray(parsed.stockMoves) ? parsed.stockMoves : [],
+      reservationLinks: normalizeReservationLinks(parsed.reservationLinks),
       settings: Object.assign(base.settings, parsed.settings || {}),
       draft: parsed.draft || null
     };
@@ -91,6 +101,56 @@ function normName(name) {
 function findCustomerByName(name) {
   const n = normName(name);
   return state.customers.find(c => normName(c.name) === n) || null;
+}
+
+function reservationLinkId(ev) {
+  if (!ev) return '';
+  const links = normalizeReservationLinks(state.reservationLinks);
+  const byEvent = ev.id && links.events[ev.id] ? links.events[ev.id] : '';
+  if (byEvent && getCustomer(byEvent)) return byEvent;
+  const key = typeof nameMatchKey === 'function' ? nameMatchKey(ev.customerName) : normName(ev.customerName);
+  if (!key) return '';
+  if (links.names[key] && getCustomer(links.names[key])) return links.names[key];
+  const matches = [];
+  Object.keys(links.names).forEach(nameKey => {
+    const customerId = links.names[nameKey];
+    if (!customerId || !getCustomer(customerId) || matches.indexOf(customerId) >= 0) return;
+    if (typeof nameDistance !== 'function') return;
+    const short = Math.min(nameKey.length, key.length);
+    const prefix = short >= 2 && (nameKey.indexOf(key) === 0 || key.indexOf(nameKey) === 0);
+    const near = Math.max(nameKey.length, key.length) >= 3 && nameDistance(nameKey, key) <= 1;
+    if (prefix || near) matches.push(customerId);
+  });
+  return matches.length === 1 ? matches[0] : '';
+}
+
+function linkReservation(ev, customerId, date) {
+  const customer = getCustomer(customerId);
+  if (!ev || !customer) return;
+  state.reservationLinks = normalizeReservationLinks(state.reservationLinks);
+  if (ev.id) state.reservationLinks.events[ev.id] = customerId;
+  const key = typeof nameMatchKey === 'function' ? nameMatchKey(ev.customerName) : normName(ev.customerName);
+  if (key) state.reservationLinks.names[key] = customerId;
+  state.stockMoves.forEach(m => {
+    if (m.type !== 'out') return;
+    const sameEvent = ev.id && m.reservationId && m.reservationId === ev.id;
+    const sameName = !m.reservationId && date && m.date === date && key &&
+      (typeof nameMatchKey === 'function' ? nameMatchKey(m.customerName) : normName(m.customerName)) === key;
+    if (sameEvent || sameName) {
+      m.customerId = customerId;
+      m.customerName = customer.name;
+    }
+  });
+  saveState();
+}
+
+function unlinkReservation(ev) {
+  if (!ev) return;
+  state.reservationLinks = normalizeReservationLinks(state.reservationLinks);
+  if (ev.id) delete state.reservationLinks.events[ev.id];
+  const key = typeof nameMatchKey === 'function' ? nameMatchKey(ev.customerName) : normName(ev.customerName);
+  if (key) delete state.reservationLinks.names[key];
+  saveState();
 }
 
 function createCustomer(name, room, id) {
@@ -433,6 +493,7 @@ function exportBackup() {
     submissions: state.submissions,
     products: state.products,
     stockMoves: state.stockMoves,
+    reservationLinks: state.reservationLinks,
     settings: { weekStart: state.settings.weekStart, tabletName: state.settings.tabletName }
   };
   downloadFile('survey-backup-' + dateKey(new Date()) + '.json', JSON.stringify(payload, null, 2), 'application/json');
@@ -475,6 +536,10 @@ function importBackup(text) {
     moveIds.add(m.id);
     addedMoves++;
   });
+  state.reservationLinks = normalizeReservationLinks(state.reservationLinks);
+  const links = normalizeReservationLinks(data.reservationLinks);
+  Object.assign(state.reservationLinks.names, links.names);
+  Object.assign(state.reservationLinks.events, links.events);
   recomputeCustomers();
   saveState();
   return { addedSubs, addedCustomers, addedProducts, addedMoves };
