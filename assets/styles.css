@@ -668,3 +668,8 @@ body:has(.entry-footer) .main { padding-bottom: 220px; }
   .res-selected .btn { margin-left: 0; }
   .res-selected .btn:first-of-type { margin-left: auto; }
 }
+
+.cal-notice { background: #fdf6e7; border: 1px solid #efdfbd; border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+.cal-notice p { margin: 0; }
+.cal-notice p + p { margin-top: 4px; }
+.res-status { white-space: nowrap; }

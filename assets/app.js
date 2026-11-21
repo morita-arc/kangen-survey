@@ -83,8 +83,8 @@ function setScreen(name) {
   view.screen = name;
   pendingScrollReset = true;
   render();
-  if ((name === 'inventory' || name === 'provide') && typeof ensureCalendar === 'function') {
-    const date = name === 'provide' && view.entry ? view.entry.date : (view.reservationDate || todayKey());
+  if ((name === 'inventory' || name === 'provide' || name === 'picker') && typeof ensureCalendar === 'function') {
+    const date = name === 'provide' && view.entry ? view.entry.date : name === 'picker' ? todayKey() : (view.reservationDate || todayKey());
     setTimeout(() => ensureCalendar(date), 0);
   }
 }
@@ -216,11 +216,12 @@ function filteredCustomers(search) {
 function pickerView() {
   const list = filteredCustomers(view.pickerSearch);
   return '' +
+    (typeof reservationPanel === 'function' ? reservationPanel(todayKey(), 'survey') : '') +
     '<div class="search-row">' +
       '<input id="picker-search" class="search" type="search" placeholder="お名前で検索" autocomplete="off" data-input="picker-search" value="' + esc(view.pickerSearch) + '">' +
       '<button class="btn" data-act="new-customer">＋ 新しいお客様</button>' +
     '</div>' +
-    '<p class="muted small">お客様をタップすると、前回の回答を読み込んでアンケートを開始します。</p>' +
+    '<p class="muted small">本日の予約から選ぶか、お客様をタップすると、前回の回答を読み込んでアンケートを開始します。</p>' +
     (list.length ? '<ul class="customer-list">' + list.map(c => {
       const prevVip = c.lastAnswers && c.lastAnswers.vip;
       const prevStd = c.lastAnswers && c.lastAnswers.std;
@@ -630,9 +631,9 @@ function settingsView() {
           '<li>発行された「/exec」のURLを上に貼り付け →「接続テスト」</li>' +
           '<li>設定済みの場合は「デプロイを管理」→ 編集 → バージョン: 新しいバージョン → デプロイ（URLは変わりません）</li>' +
         '</ol>' +
-        '<p class="small"><a class="link" href="https://docs.google.com/document/d/1uK3eR5caUKJTAv5WmjERH8s3gN8ifevgjxyHJh2RUyg/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
+        '<p class="small"><a class="link" href="https://docs.google.com/document/d/1STagmQ1YqUgJjPMtJanqkMEqwkVRjjMdhDPPbc-Orio/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
         '<a class="link" href="https://docs.google.com/spreadsheets/d/1JXC-kQ4Mtnb1VI7TM35QB8lf8I-hp3v_doLsEv79lxA/edit" target="_blank" rel="noopener">スプレッドシート</a></p>' +
-        '<p class="small">Googleカレンダーの予約も同じURLから取得します。既定では bran-room@nse-ed.com が作成した「様」付きの予定だけを表示します。予約名はひらがな・カタカナの違いを自動照合し、候補を表示します。違う場合は予約一覧の「顧客を紐付け」から選べます（過去の日付も可）。Code.gs更新後は setupSheet を実行してカレンダーの権限を承認し、新しいバージョンで再デプロイしてください。</p>' +
+        '<p class="small">Googleカレンダーの予約は、在庫・提供・アンケート開始後の顧客選択画面に表示されます。既定では bran-room@nse-ed.com が作成した「様」付きの予定だけを対象にします。予約名はひらがな・カタカナの違いを自動照合し、違う場合は「顧客を紐付け」から選べます。Code.gs更新後は setupSheet を実行してカレンダーの権限を承認し、「デプロイを管理」→ 新しいバージョンで再デプロイしてください。接続テストに予約取得の結果と原因が表示されます。</p>' +
       '</details>' +
     '</section>' +
 
@@ -851,33 +852,52 @@ async function syncAll() {
   return sent;
 }
 
-function testSheetConnection() {
+async function testSheetConnection() {
   if (!state.settings.sheetUrl) { toast('URLを入力してください'); return; }
   view.sheetStatus = '接続を確認しています…';
   if (view.screen === 'settings') render();
-  jsonp(state.settings.sheetUrl + (state.settings.sheetUrl.indexOf('?') >= 0 ? '&' : '?') + 'action=selftest&token=' + encodeURIComponent(state.settings.token), 15000)
-    .then(data => {
-      if (data && data.ok) {
-        if (data.version >= 3) {
-          view.sheetStatus = '接続OK（送信・予約連携）：' + (data.title ? '「' + data.title + '」' : 'シート') + '（' + (data.count || 0) + '行）';
-          toast('接続できました');
-        } else {
-          view.sheetStatus = '接続はできましたが、Apps Scriptが古い可能性があります。Code.gsを貼り直して「新しいデプロイ」をやり直してください。';
-          toast('スクリプトの再デプロイが必要です');
+  const base = state.settings.sheetUrl;
+  const token = encodeURIComponent(state.settings.token);
+  const join = base.indexOf('?') >= 0 ? '&' : '?';
+  try {
+    const data = await jsonp(base + join + 'action=selftest&token=' + token, 15000);
+    let status = '';
+    if (data && data.ok) {
+      status = data.version >= 3
+        ? '接続OK（送信・予約連携 v' + data.version + '）：' + (data.title ? '「' + data.title + '」' : 'シート') + '（' + (data.count || 0) + '行）'
+        : '接続はできましたが、Apps Scriptが古い可能性があります。Code.gsを貼り直して再デプロイしてください。';
+    } else {
+      status = '接続できましたが応答が不正です' + (data && data.error ? '（' + data.error + '）' : '');
+    }
+    let calendarOk = false;
+    try {
+      const cal = await jsonp(base + join + 'action=calendar&date=' + encodeURIComponent(todayKey()) + '&debug=1&token=' + token, 15000);
+      if (cal && cal.ok && Array.isArray(cal.events)) {
+        calendarOk = true;
+        status += ' ／ 本日の予約: ' + (cal.count || 0) + '件';
+        if (cal.warning) status += '（' + cal.warning + '）';
+        if (!cal.count && cal.hint) status += '（' + cal.hint + '）';
+        if (!cal.count && cal.creators && cal.creators.length) {
+          status += ' ／ 予定の作成者: ' + cal.creators.slice(0, 5).join(', ');
         }
+      } else if (cal && Array.isArray(cal.rows)) {
+        status += ' ／ カレンダー未対応（Code.gsを再デプロイしてください）';
       } else {
-        view.sheetStatus = '接続できましたが応答が不正です' + (data && data.error ? '（' + data.error + '）' : '');
-        toast('応答を確認してください');
+        status += ' ／ カレンダー取得失敗：' + ((cal && cal.error) || '応答が不正です');
+        if (cal && cal.hint) status += '（' + cal.hint + '）';
       }
-      if (view.screen === 'settings') render();
-    })
-    .catch(err => {
-      view.sheetStatus = '接続失敗：' + err.message;
-      toast('接続できませんでした');
-      if (view.screen === 'settings') render();
-    });
+    } catch (err) {
+      status += ' ／ カレンダー取得失敗：' + err.message;
+    }
+    view.sheetStatus = status;
+    if (view.screen === 'settings') render();
+    toast(calendarOk ? '接続できました' : 'カレンダーを取得できませんでした');
+  } catch (err) {
+    view.sheetStatus = '接続失敗：' + err.message;
+    toast('接続できませんでした');
+    if (view.screen === 'settings') render();
+  }
 }
-
 function onOptionTap(qid, value) {
   const d = view.draft;
   if (!d) return;

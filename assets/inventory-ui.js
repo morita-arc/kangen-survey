@@ -53,6 +53,18 @@ function isReservationEntered(ev, date) {
   });
 }
 
+function isSurveyDone(ev, date) {
+  const info = reservationCustomerInfo(ev);
+  const key = nameMatchKey(ev.customerName);
+  const customerKey = info.customer ? nameMatchKey(info.customer.name) : '';
+  return state.submissions.some(s => {
+    if (dateKey(new Date(s.date)) !== date) return false;
+    if (info.customer && s.customerId === info.customer.id) return true;
+    const name = nameMatchKey(s.customerName);
+    return name && (name === key || (customerKey && name === customerKey));
+  });
+}
+
 async function ensureCalendar(date, force) {
   if (!state.settings.sheetUrl) return;
   const target = date || todayKey();
@@ -68,14 +80,14 @@ async function ensureCalendar(date, force) {
   try {
     const data = await jsonp(url, 20000);
     if (data && data.ok && Array.isArray(data.events)) {
-      view.calendar = { date: target, events: data.events, fetchedAt: Date.now(), error: '' };
+      view.calendar = { date: target, events: data.events, fetchedAt: Date.now(), error: '', warning: data.warning || '', hint: data.hint || '' };
     } else if (data && Array.isArray(data.rows)) {
-      view.calendar = { date: target, events: [], fetchedAt: 0, error: 'カレンダー連携にはCode.gsの更新と再デプロイが必要です' };
+      view.calendar = { date: target, events: [], fetchedAt: 0, error: 'カレンダー連携にはCode.gsの更新と再デプロイが必要です', hint: '保存しただけでは反映されません。「デプロイを管理」→ 新しいバージョンで再デプロイしてください。' };
     } else {
-      view.calendar = { date: target, events: [], fetchedAt: 0, error: (data && data.error) || '予約を取得できませんでした' };
+      view.calendar = { date: target, events: [], fetchedAt: 0, error: (data && data.error) || '予約を取得できませんでした', hint: (data && data.hint) || '' };
     }
   } catch (err) {
-    view.calendar = { date: target, events: [], fetchedAt: 0, error: err.message };
+    view.calendar = { date: target, events: [], fetchedAt: 0, error: err.message, hint: 'iPadのSafariで /exec?action=calendar&date=' + target + ' を直接開いて確認してください。' };
   }
   view.calendarLoading = false;
   view.calendarLoadingDate = '';
@@ -85,8 +97,10 @@ async function ensureCalendar(date, force) {
 function updateReservationPanel() {
   const el = document.getElementById('reservation-panel');
   if (!el) return;
-  const date = view.screen === 'provide' && view.entry ? view.entry.date : (view.reservationDate || todayKey());
-  el.outerHTML = reservationPanel(date, view.screen === 'provide' ? 'entry' : 'inventory');
+  const mode = view.screen === 'provide' ? 'entry' : view.screen === 'picker' ? 'survey' : 'inventory';
+  const date = view.screen === 'provide' && view.entry ? view.entry.date :
+    (view.screen === 'picker' ? todayKey() : (view.reservationDate || todayKey()));
+  el.outerHTML = reservationPanel(date, mode);
 }
 
 function reservationLinkRow(ev, info) {
@@ -114,39 +128,52 @@ function reservationPanel(date, mode) {
   const cal = view.calendar && view.calendar.date === date ? view.calendar : null;
   const loading = view.calendarLoading && view.calendarLoadingDate === date;
   const events = cal ? cal.events : [];
-  const enteredCount = events.filter(ev => isReservationEntered(ev, date)).length;
-  const selectedId = mode === 'entry' && view.entry ? view.entry.reservationId : '';
   const isEntry = mode === 'entry';
+  const isSurvey = mode === 'survey';
+  const isDone = ev => isSurvey ? isSurveyDone(ev, date) : isReservationEntered(ev, date);
+  const doneCount = events.filter(isDone).length;
+  const selectedId = isEntry && view.entry ? view.entry.reservationId : '';
   const isToday = date === todayKey();
-  const dateNav = isEntry ? '' :
+  const dateNav = isEntry || isSurvey ? '' :
     '<div class="date-nav res-date-nav">' +
       '<button class="btn small" data-act="res-shift" data-value="-1">‹ 前日</button>' +
       '<input class="input" type="date" data-input="res-date" value="' + esc(date) + '">' +
       '<button class="btn small" data-act="res-shift" data-value="1">翌日 ›</button>' +
       '<button class="btn small ghost" data-act="res-today">今日</button>' +
     '</div>';
+  const notice = cal && (cal.warning || cal.hint)
+    ? '<div class="cal-notice">' + (cal.warning ? '<p><strong>' + esc(cal.warning) + '</strong></p>' : '') +
+      (cal.hint ? '<p class="muted small">' + esc(cal.hint) + '</p>' : '') + '</div>'
+    : '';
 
   let body = '';
   if (loading && !cal) {
     body = '<p class="empty">予約を読み込んでいます…</p>';
   } else if (cal && cal.error) {
     body = '<div class="cal-error"><p>' + esc(cal.error) + '</p>' +
-      '<p class="muted small">Apps Script の Code.gs を最新版にして「デプロイを管理」→ 新しいバージョンで再デプロイしてください。</p></div>';
+      '<p class="muted small">' + esc(cal.hint || 'Apps Script の Code.gs を最新版にして「デプロイを管理」→ 新しいバージョンで再デプロイしてください。') + '</p></div>';
   } else if (!events.length) {
-    body = '<p class="empty">' + (cal ? 'この日の予約はありません。' : '予約を読み込めませんでした。') + '</p>';
+    body = notice || '<p class="empty">' + (cal ? 'この日の予約はありません。' : '予約を読み込めませんでした。') + '</p>';
   } else {
-    body = '<div class="res-summary">未入力 <strong>' + (events.length - enteredCount) + '</strong>件 ・ 入力済み <strong>' + enteredCount + '</strong>件</div>' +
+    body = notice +
+      '<div class="res-summary">' +
+        (isSurvey
+          ? '未実施 <strong>' + (events.length - doneCount) + '</strong>件 ・ アンケート済み <strong>' + doneCount + '</strong>件'
+          : '未入力 <strong>' + (events.length - doneCount) + '</strong>件 ・ 入力済み <strong>' + doneCount + '</strong>件') +
+      '</div>' +
       '<ul class="reservation-list">' + events.map(ev => {
-        const entered = isReservationEntered(ev, date);
+        const entered = isDone(ev);
         const selected = selectedId && ev.id === selectedId;
-        const action = isEntry ? 'pick-reservation' : 'reservation-start';
+        const action = isEntry ? 'pick-reservation' : isSurvey ? 'survey-reservation' : 'reservation-start';
         const info = reservationCustomerInfo(ev);
         return '<li class="reservation-item">' +
           '<button class="reservation-row' + (selected ? ' selected' : '') + '" data-act="' + action + '" data-value="' + esc(ev.id) + '">' +
             '<span class="res-time"><strong>' + esc(ev.start) + '</strong><span>' + esc(ev.end) + '</span></span>' +
             '<span class="res-main"><span class="res-name">' + esc(ev.customerName) + ' 様</span>' +
               '<span class="res-sub">' + (ev.room ? '<span class="badge ' + (ev.room === 'VIP' ? 'vip' : 'std') + '">' + esc(ev.room) + '</span> ' : '') + esc(ev.title) + '</span></span>' +
-            '<span class="res-status ' + (entered ? 'done' : 'todo') + '">' + (entered ? '入力済み' : '未入力') + '</span>' +
+            '<span class="res-status ' + (entered ? 'done' : 'todo') + '">' +
+              (isSurvey ? (entered ? 'アンケート済み' : '未実施') : (entered ? '入力済み' : '未入力')) +
+            '</span>' +
           '</button>' +
           reservationLinkRow(ev, info) +
         '</li>';
@@ -154,7 +181,7 @@ function reservationPanel(date, mode) {
   }
 
   return '<section class="panel reservation-panel" id="reservation-panel">' +
-    '<div class="panel-head"><h2>' + (isEntry ? '予約から選ぶ' : (isToday ? '本日の予約' : '予約')) + '</h2>' +
+    '<div class="panel-head"><h2>' + (isEntry ? '予約から選ぶ' : isSurvey ? '本日の予約' : (isToday ? '本日の予約' : '予約')) + '</h2>' +
       '<div class="res-head-actions"><span class="muted small">' + esc(reportDateLabel(date)) + '</span>' +
       '<button class="link small" data-act="calendar-refresh">再読み込み</button></div></div>' +
     dateNav +
@@ -396,6 +423,28 @@ function commitEntry(items, customerName) {
   view.calendar = null;
   toast(items.length + '件記録しました');
   setScreen('inventory');
+}
+
+function startSurveyFromReservation(id) {
+  const ev = findReservation(id);
+  if (!ev) return;
+  const info = reservationCustomerInfo(ev);
+  if (!info.customer && info.candidates.length > 1) {
+    openReservationLink(id);
+    toast('候補が複数あります。顧客を選んでから、もう一度予約をタップしてください');
+    return;
+  }
+  const customer = info.customer || {
+    id: uid('cus'),
+    name: ev.customerName,
+    room: 'std',
+    visits: 0,
+    lastVisitAt: null,
+    lastAnswers: {}
+  };
+  const room = ev.room === 'VIP' ? 'vip' : ev.room === '一般' ? 'std' : '';
+  if (room) startDraftForCustomer(customer, room);
+  else roomChooser(customer);
 }
 
 function openReservationLink(id) {
@@ -683,6 +732,7 @@ function handleInventoryClick(e) {
       }
       break;
     }
+    case 'survey-reservation': startSurveyFromReservation(value); break;
     case 'reservation-link':
       openReservationLink(value);
       break;
