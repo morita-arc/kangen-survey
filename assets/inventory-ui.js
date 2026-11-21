@@ -206,7 +206,7 @@ function inventoryView() {
   return '' +
     '<section class="inv-hero">' +
       '<div><p class="eyebrow">在庫・特典</p><h1>在庫管理</h1>' +
-      '<p class="lead">野菜・コーヒー・備品の提供と回収を記録。日報はコピーしてそのまま送れます。</p></div>' +
+      '<p class="lead">野菜・コーヒー・備品の提供と回収を記録。日報はコピーまたはChatWorkへそのまま送れます。</p></div>' +
       '<div class="inv-hero-actions">' +
         '<button class="btn primary xl" data-act="inv-entry" data-value="out">＋ 提供を記録</button>' +
       '</div>' +
@@ -223,7 +223,7 @@ function inventoryView() {
 
     '<section class="inv-actions">' +
       '<button class="inv-action" data-act="inv-entry" data-value="return"><span class="inv-action-title">回収を記録</span><span class="inv-action-sub">在庫に加算（補充）</span></button>' +
-      '<button class="inv-action" data-act="inv-report"><span class="inv-action-title">日報を作成</span><span class="inv-action-sub">コピーしてチャットへ</span></button>' +
+      '<button class="inv-action" data-act="inv-report"><span class="inv-action-title">日報を作成</span><span class="inv-action-sub">コピー / ChatWorkへ</span></button>' +
       '<button class="inv-action" data-act="product-add"><span class="inv-action-title">商品登録</span><span class="inv-action-sub">野菜・コーヒー・備品</span></button>' +
       '<button class="inv-action" data-act="inv-history"><span class="inv-action-title">履歴</span><span class="inv-action-sub">提供・回収・初期在庫の記録</span></button>' +
     '</section>' +
@@ -794,10 +794,11 @@ function reportView() {
     '<textarea id="report-text" class="report-text" readonly rows="' + rows + '" spellcheck="false">' + esc(text) + '</textarea>' +
     '<div class="row-buttons">' +
       '<button class="btn primary lg" data-act="report-copy">日報をコピー</button>' +
+      '<button class="btn lg" data-act="report-chatwork">ChatWorkに送信</button>' +
       '<button class="btn" data-act="report-shift" data-value="-1">前日を見る</button>' +
       '<button class="btn" data-act="report-shift" data-value="1">翌日を見る</button>' +
     '</div>' +
-    '<p class="muted small">チャットにそのまま貼り付けてください。過去の日付も上の日付から選べます。備品は日報に含まれません。</p>';
+    '<p class="muted small">チャットにそのまま貼り付けるか、ChatWorkへ直接送信できます。過去の日付も上の日付から選べます。備品は日報に含まれません。</p>';
 }
 
 function copyReport() {
@@ -815,6 +816,24 @@ function copyReport() {
     navigator.clipboard.writeText(text).then(done).catch(fallback);
   } else {
     fallback();
+  }
+}
+
+async function sendDailyReportToChatWork() {
+  if (chatworkSending) return;
+  const date = view.reportDate || todayKey();
+  const text = buildDailyReport(date, view.reportIncludeDate);
+  const ok = await confirmDialog('ChatWorkに送信', reportDateLabel(date) + ' の日報をChatWorkのグループへ送信します。', '送信する', 'primary');
+  if (!ok) return;
+  chatworkSending = true;
+  toast('ChatWorkに送信しています…');
+  try {
+    await sendChatWorkMessage(text);
+    toast('日報をChatWorkに送信しました');
+  } catch (err) {
+    toast('ChatWorkに送信できませんでした：' + chatworkErrorMessage(err));
+  } finally {
+    chatworkSending = false;
   }
 }
 
@@ -952,6 +971,7 @@ function handleInventoryClick(e) {
       render();
       break;
     case 'report-copy': copyReport(); break;
+    case 'report-chatwork': sendDailyReportToChatWork(); break;
     case 'history-shift':
       view.invHistoryDate = shiftDateKey(view.invHistoryDate || todayKey(), Number(value));
       render();
