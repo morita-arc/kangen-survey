@@ -1,11 +1,13 @@
-const CACHE = 'kangen-survey-v1.0.8';
+const CACHE = 'kangen-survey-v1.1.0';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './assets/styles.css',
   './assets/survey.js',
+  './assets/inventory.js',
   './assets/store.js',
+  './assets/inventory-ui.js',
   './assets/app.js',
   './assets/icon-192.png',
   './assets/icon-512.png'

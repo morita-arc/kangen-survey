@@ -12,7 +12,11 @@ const view = {
   statsRoom: 'all',
   openHistory: {},
   draft: null,
-  sheetStatus: ''
+  sheetStatus: '',
+  entry: null,
+  reportDate: todayKey(),
+  reportIncludeDate: false,
+  invHistoryDate: todayKey()
 };
 
 const SCREEN_TITLES = {
@@ -23,7 +27,14 @@ const SCREEN_TITLES = {
   customers: '顧客',
   detail: '顧客の詳細',
   stats: '集計',
-  settings: '設定'
+  settings: '設定',
+  inventory: '在庫・特典',
+  provide: '提供を記録',
+  purchase: '仕入を記録',
+  collect: '回収を記録',
+  products: '商品登録',
+  report: '日報',
+  invhistory: '在庫の履歴'
 };
 
 function esc(v) {
@@ -82,7 +93,7 @@ function render() {
   const title = SCREEN_TITLES[view.screen] || '';
   $('#top-title').textContent = title;
   $('#back-btn').hidden = (view.screen === 'home');
-  $('#tabbar').hidden = (view.screen === 'survey' || view.screen === 'done');
+  $('#tabbar').hidden = (['survey', 'done', 'provide', 'purchase', 'collect'].indexOf(view.screen) >= 0);
   const body = $('#main');
   switch (view.screen) {
     case 'home': body.innerHTML = homeView(); break;
@@ -93,11 +104,19 @@ function render() {
     case 'detail': body.innerHTML = detailView(); break;
     case 'stats': body.innerHTML = statsView(); break;
     case 'settings': body.innerHTML = settingsView(); break;
+    case 'inventory': body.innerHTML = inventoryView(); break;
+    case 'provide':
+    case 'purchase':
+    case 'collect': body.innerHTML = entryView(view.screen); break;
+    case 'products': body.innerHTML = productsView(); break;
+    case 'report': body.innerHTML = reportView(); break;
+    case 'invhistory': body.innerHTML = invHistoryView(); break;
     default: body.innerHTML = homeView();
   }
   renderSyncBadge();
   $$('#tabbar [data-nav]').forEach(b => b.classList.toggle('active', b.dataset.nav === view.screen ||
-    (view.screen === 'detail' && b.dataset.nav === 'customers')));
+    (view.screen === 'detail' && b.dataset.nav === 'customers') ||
+    (['provide', 'purchase', 'collect', 'products', 'report', 'invhistory'].indexOf(view.screen) >= 0 && b.dataset.nav === 'inventory')));
   if (view.screen === 'picker') {
     const input = $('#picker-search');
     if (input && view.pickerSearch) input.value = view.pickerSearch;
@@ -166,6 +185,7 @@ function homeView() {
     '<section class="quick">' +
       '<button class="quick-card" data-act="nav" data-value="customers"><span class="quick-title">顧客から探す</span><span class="quick-sub">前回の回答を確認・再利用</span></button>' +
       '<button class="quick-card" data-act="nav" data-value="stats"><span class="quick-title">週次・総集計</span><span class="quick-sub">グラフ・CSV・スプレッドシート</span></button>' +
+      '<button class="quick-card" data-act="nav" data-value="inventory"><span class="quick-title">在庫・日報</span><span class="quick-sub">野菜・コーヒーの提供と仕入</span></button>' +
       '<button class="quick-card" data-act="nav" data-value="settings"><span class="quick-title">設定・同期</span><span class="quick-sub">Googleスプレッドシート連携</span></button>' +
     '</section>';
 }
@@ -246,6 +266,7 @@ function detailView() {
   const subs = submissionsForCustomer(c.id);
   const latest = subs[0];
   const latestAnswers = latest ? latest.answers : null;
+  const perks = customerProvideHistory(c.id, c.name);
   return '' +
     '<section class="panel">' +
       '<div class="detail-head">' +
@@ -277,6 +298,15 @@ function detailView() {
         '</li>';
       }).join('') + '</ul>' : '<p class="empty">履歴がありません。</p>') +
     '</section>' +
+    (perks.length
+      ? '<section class="panel"><div class="panel-head"><h2>特典の提供履歴</h2><span class="muted small">' + perks.length + '件</span></div>' +
+        '<ul class="perk-list">' + perks.map(m => {
+          const p = getProduct(m.productId);
+          return '<li><span class="perk-date">' + esc(reportDateLabel(m.date)) + '</span>' +
+            '<span class="perk-name">' + esc(p ? p.name : '（削除済み）') + '</span>' +
+            '<span class="perk-qty">' + m.qty + esc(p ? p.unit : '') + '</span></li>';
+        }).join('') + '</ul></section>'
+      : '') +
     '<button class="btn ghost" data-act="nav" data-value="customers">顧客一覧へ戻る</button>';
 }
 
@@ -599,7 +629,7 @@ function settingsView() {
 
     '<section class="panel">' +
       '<h2>データ</h2>' +
-      '<p class="muted small">回答はこのタブレットのブラウザ内に保存されています（' + state.submissions.length + '件・顧客' + state.customers.length + '名）。CSVはExcel/スプレッドシートで開けます。</p>' +
+      '<p class="muted small">回答はこのタブレットのブラウザ内に保存されています（' + state.submissions.length + '件・顧客' + state.customers.length + '名・商品' + state.products.length + '品目・在庫記録' + state.stockMoves.length + '件）。CSVはExcel/スプレッドシートで開けます。</p>' +
       '<div class="row-buttons">' +
         '<button class="btn" data-act="export-csv">回答CSV出力</button>' +
         '<button class="btn" data-act="export-json">バックアップ保存</button>' +
@@ -974,7 +1004,7 @@ function bindEvents() {
         if (fileInput) fileInput.click();
         break;
       case 'clear-data':
-        confirmDialog('全データ削除', '顧客・回答・履歴をすべて削除します。スプレッドシート上のデータは消えません。元に戻せません。', 'すべて削除').then(ok => {
+        confirmDialog('全データ削除', '顧客・回答・履歴・商品・在庫記録をすべて削除します。スプレッドシート上のデータは消えません。元に戻せません。', 'すべて削除').then(ok => {
           if (!ok) return;
           clearAllData();
           toast('削除しました');
@@ -1032,7 +1062,7 @@ function bindEvents() {
       reader.onload = () => {
         try {
           const res = importBackup(String(reader.result));
-          toast('取り込みました（回答' + res.addedSubs + '件・顧客' + res.addedCustomers + '名）');
+          toast('取り込みました（回答' + res.addedSubs + '件・顧客' + res.addedCustomers + '名・商品' + res.addedProducts + '件・在庫記録' + res.addedMoves + '件）');
           render();
         } catch (err) {
           toast('読み込みに失敗しました：' + err.message);
@@ -1066,6 +1096,21 @@ function bindEvents() {
     if (view.screen === 'done') { view.lastDone = null; setScreen('home'); return; }
     if (view.screen === 'detail') { setScreen('customers'); return; }
     if (view.screen === 'picker') { setScreen('home'); return; }
+    if (['provide', 'purchase', 'collect'].indexOf(view.screen) >= 0) {
+      const e = view.entry;
+      const hasInput = e && ((Object.keys(e.qty || {}).some(k => Number(e.qty[k]) > 0)) || e.customerName || e.memo);
+      if (hasInput) {
+        confirmDialog('入力を中断', '入力中の数量は保存されません。中断しますか？', '中断する').then(ok => {
+          if (ok) { view.entry = null; setScreen('inventory'); }
+        });
+      } else {
+        view.entry = null;
+        setScreen('inventory');
+      }
+      return;
+    }
+    if (['products', 'report', 'invhistory'].indexOf(view.screen) >= 0) { setScreen('inventory'); return; }
+    if (view.screen === 'inventory') { setScreen('home'); return; }
     setScreen('home');
   });
 

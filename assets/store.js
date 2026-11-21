@@ -1,6 +1,6 @@
 /* 保存・集計用データ管理 */
 const STORE_KEY = 'kangen-survey-v1';
-const APP_VERSION = '1.0.8';
+const APP_VERSION = '1.1.0';
 
 const SHEET_COLUMNS = [
   { key: 'id', label: '送信ID' },
@@ -32,6 +32,8 @@ function defaultState() {
     version: 1,
     customers: [],
     submissions: [],
+    products: [],
+    stockMoves: [],
     settings: {
       sheetUrl: '',
       token: '',
@@ -55,6 +57,8 @@ function loadState() {
       version: base.version,
       customers: Array.isArray(parsed.customers) ? parsed.customers : [],
       submissions: Array.isArray(parsed.submissions) ? parsed.submissions : [],
+      products: Array.isArray(parsed.products) ? parsed.products : [],
+      stockMoves: Array.isArray(parsed.stockMoves) ? parsed.stockMoves : [],
       settings: Object.assign(base.settings, parsed.settings || {}),
       draft: parsed.draft || null
     };
@@ -172,6 +176,87 @@ function deleteCustomer(id) {
   state.customers = state.customers.filter(c => c.id !== id);
   state.submissions = state.submissions.filter(s => s.customerId !== id);
   saveState();
+}
+
+function getProduct(id) {
+  return state.products.find(p => p.id === id) || null;
+}
+
+function nextProductSort() {
+  if (!state.products.length) return 0;
+  return Math.max.apply(null, state.products.map(p => p.sort || 0)) + 1;
+}
+
+function addProduct(input) {
+  const product = {
+    id: uid('prd'),
+    name: normName(input.name),
+    category: input.category || '野菜',
+    unit: normName(input.unit) || '袋',
+    sort: nextProductSort(),
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+  state.products.push(product);
+  saveState();
+  const initial = Number(input.initial) || 0;
+  if (initial > 0) {
+    addStockMove({ date: dateKey(new Date()), type: 'in', productId: product.id, qty: initial, memo: '初期在庫' });
+  }
+  return product;
+}
+
+function updateProduct(id, patch) {
+  const p = getProduct(id);
+  if (!p) return null;
+  ['name', 'category', 'unit', 'active'].forEach(k => {
+    if (patch[k] !== undefined) p[k] = patch[k];
+  });
+  saveState();
+  return p;
+}
+
+function deleteProduct(id) {
+  const hasMoves = state.stockMoves.some(m => m.productId === id);
+  if (hasMoves) return { ok: false, reason: '履歴があるため削除できません。非表示にしてください。' };
+  state.products = state.products.filter(p => p.id !== id);
+  saveState();
+  return { ok: true };
+}
+
+function addStockMove(input) {
+  const qty = Number(input.qty);
+  if (!qty || isNaN(qty)) return null;
+  const type = input.type || 'in';
+  if (type !== 'adjust' && qty < 0) return null;
+  const move = {
+    id: uid('mov'),
+    date: input.date || dateKey(new Date()),
+    type: type,
+    productId: input.productId,
+    qty: qty,
+    customerId: input.customerId || '',
+    customerName: normName(input.customerName || ''),
+    memo: normName(input.memo || ''),
+    createdAt: new Date().toISOString()
+  };
+  state.stockMoves.push(move);
+  saveState();
+  return move;
+}
+
+function deleteStockMove(id) {
+  state.stockMoves = state.stockMoves.filter(m => m.id !== id);
+  saveState();
+}
+
+function movesForDate(date) {
+  return state.stockMoves.filter(m => m.date === date);
+}
+
+function movesForCustomer(customerId, customerName) {
+  return state.stockMoves.filter(m => m.type === 'out' &&
+    ((customerId && m.customerId === customerId) || (!m.customerId && customerName && m.customerName === normName(customerName))));
 }
 
 function recomputeCustomers() {
@@ -344,6 +429,8 @@ function exportBackup() {
     exportedAt: new Date().toISOString(),
     customers: state.customers,
     submissions: state.submissions,
+    products: state.products,
+    stockMoves: state.stockMoves,
     settings: { weekStart: state.settings.weekStart, tabletName: state.settings.tabletName }
   };
   downloadFile('survey-backup-' + dateKey(new Date()) + '.json', JSON.stringify(payload, null, 2), 'application/json');
@@ -357,6 +444,8 @@ function importBackup(text) {
   const existing = new Set(state.submissions.map(s => s.id));
   let addedSubs = 0;
   let addedCustomers = 0;
+  let addedProducts = 0;
+  let addedMoves = 0;
   data.customers.forEach(c => {
     if (!c || !c.id) return;
     if (!state.customers.find(x => x.id === c.id)) {
@@ -370,9 +459,23 @@ function importBackup(text) {
     existing.add(s.id);
     addedSubs++;
   });
+  (data.products || []).forEach(p => {
+    if (!p || !p.id) return;
+    if (!state.products.find(x => x.id === p.id)) {
+      state.products.push(p);
+      addedProducts++;
+    }
+  });
+  const moveIds = new Set(state.stockMoves.map(m => m.id));
+  (data.stockMoves || []).forEach(m => {
+    if (!m || !m.id || moveIds.has(m.id)) return;
+    state.stockMoves.push(m);
+    moveIds.add(m.id);
+    addedMoves++;
+  });
   recomputeCustomers();
   saveState();
-  return { addedSubs, addedCustomers };
+  return { addedSubs, addedCustomers, addedProducts, addedMoves };
 }
 
 function clearAllData() {
