@@ -674,6 +674,29 @@ function settingsView() {
     '</section>' +
 
     '<section class="panel">' +
+      '<h2>複数端末の共有（Supabase）</h2>' +
+      '<p class="muted small">顧客・回答・商品・在庫・予約の紐付けを全端末で共有します。設定と下書きは端末ごとです。</p>' +
+      '<label class="field"><span>Project URL</span>' +
+        '<input class="input" type="url" data-input="supabase-url" value="' + esc(s.supabaseUrl || '') + '" placeholder="https://xxxx.supabase.co"></label>' +
+      '<label class="field"><span>anon public key</span>' +
+        '<input class="input" type="text" data-input="supabase-anon-key" value="' + esc(s.supabaseAnonKey || '') + '" placeholder="eyJhbGciOi..."></label>' +
+      '<label class="check"><input type="checkbox" data-input="supabase-auto-sync"' + (s.supabaseAutoSync ? ' checked' : '') + '> 自動で同期する</label>' +
+      '<div class="row-buttons">' +
+        '<button class="btn primary" data-act="supabase-save">接続設定を保存</button>' +
+        '<button class="btn" data-act="supabase-sync">今すぐ同期</button>' +
+        '<button class="btn" data-act="supabase-upload">ローカルデータを共有DBへ</button>' +
+      '</div>' +
+      '<p class="muted small" id="supabase-status">' + (typeof supabaseStatusLines === 'function' ? esc(supabaseStatusLines()) : 'Supabase未設定') + '</p>' +
+      '<div class="auth-grid">' +
+        '<input id="supabase-email" class="input" type="email" autocomplete="username" placeholder="メールアドレス">' +
+        '<input id="supabase-password" class="input" type="password" autocomplete="current-password" placeholder="パスワード">' +
+        '<button class="btn" data-act="supabase-login">ログイン</button>' +
+        '<button class="btn ghost" data-act="supabase-logout">ログアウト</button>' +
+      '</div>' +
+      '<p class="muted small">初回はSupabaseのAuthでユーザーを作成し、この画面でログインしてください。最初の端末だけ「ローカルデータを共有DBへ」を押します。2台目以降は、端末データが空の状態でログインすると重複しません。</p>' +
+    '</section>' +
+
+    '<section class="panel">' +
       '<h2>データ</h2>' +
       '<p class="muted small">回答はこのタブレットのブラウザ内に保存されています（' + state.submissions.length + '件・顧客' + state.customers.length + '名・商品' + state.products.length + '品目・在庫記録' + state.stockMoves.length + '件）。CSVはExcel/スプレッドシートで開けます。</p>' +
       '<div class="row-buttons">' +
@@ -687,7 +710,7 @@ function settingsView() {
 
     '<section class="panel">' +
       '<h2>アプリ情報</h2>' +
-      '<p class="muted small">かんげんアンケート v' + APP_VERSION + ' ・ VIP/一般の2種類 ・ 回答は端末内保存＋シート同期</p>' +
+      '<p class="muted small">かんげんアンケート v' + APP_VERSION + ' ・ VIP/一般の2種類 ・ 回答は端末内保存＋シート同期＋Supabase共有</p>' +
       '<details class="guide"><summary>使い方のヒント</summary>' +
         '<ul class="tips">' +
           '<li>お客様を選ぶと前回の回答が自動で入ります。変更する項目だけタップして送信できます。</li>' +
@@ -1081,6 +1104,26 @@ function bindEvents() {
       case 'sync-push': pushUnsynced(); break;
       case 'sync-pull': pullFromSheet(false); break;
       case 'sync-all': syncAll(); break;
+      case 'supabase-save':
+        initSupabaseSync(true).then(function () { toast('Supabase設定を保存しました'); });
+        break;
+      case 'supabase-login': {
+        const email = document.getElementById('supabase-email') ? document.getElementById('supabase-email').value : '';
+        const password = document.getElementById('supabase-password') ? document.getElementById('supabase-password').value : '';
+        if (!email || !password) { toast('メールとパスワードを入力してください'); break; }
+        supabaseSignIn(email, password).then(function () { toast('ログインしました'); }).catch(function (err) { toast('ログイン失敗：' + (err.message || err)); });
+        break;
+      }
+      case 'supabase-logout':
+        supabaseSignOut().then(function () { toast('ログアウトしました'); });
+        break;
+      case 'supabase-sync':
+        supabaseSyncNow().then(function () { toast('同期しました'); }).catch(function (err) { toast('同期失敗：' + (err.message || err)); });
+        break;
+      case 'supabase-upload':
+        confirmDialog('共有DBへ送信', 'この端末の顧客・回答・商品・在庫・予約紐付けを共有DBへ送ります。既存の共有データとIDが同じものは上書きされます。', '送信する', 'primary')
+          .then(function (ok) { if (ok) supabaseUploadLocal().then(function () { toast('共有DBへ送信しました'); }).catch(function (err) { toast('送信失敗：' + (err.message || err)); }); });
+        break;
       default: break;
     }
   });
@@ -1117,6 +1160,9 @@ function bindEvents() {
     if (key === 'tablet-name') { state.settings.tabletName = t.value; saveState(); return; }
     if (key === 'sheet-url') { state.settings.sheetUrl = t.value.trim(); saveState(); return; }
     if (key === 'sheet-token') { state.settings.token = t.value; saveState(); return; }
+    if (key === 'supabase-url') { state.settings.supabaseUrl = t.value.trim(); saveState(); return; }
+    if (key === 'supabase-anon-key') { state.settings.supabaseAnonKey = t.value.trim(); saveState(); return; }
+    if (key === 'supabase-auto-sync') { state.settings.supabaseAutoSync = t.checked; saveState(); return; }
     if (key === 'auto-sync') { state.settings.autoSync = t.checked; saveState(); return; }
   });
 
@@ -1190,6 +1236,7 @@ function boot() {
   bindEvents();
   render();
   if (state.draft) view.draft = state.draft;
+  if (typeof initSupabaseSync === 'function') setTimeout(() => initSupabaseSync(false), 0);
   if (state.settings.autoSync && state.settings.sheetUrl) {
     setTimeout(() => { syncAll(); }, 1200);
   }

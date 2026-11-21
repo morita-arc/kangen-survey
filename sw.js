@@ -1,4 +1,4 @@
-const CACHE = 'kangen-survey-v1.8.0';
+const CACHE = 'kangen-survey-v2.0.0';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const ASSETS = [
   './assets/survey.js',
   './assets/inventory.js',
   './assets/store.js',
+  './assets/supabase-sync.js',
   './assets/inventory-ui.js',
   './assets/app.js',
   './assets/icon-192.png',

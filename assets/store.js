@@ -1,6 +1,6 @@
 /* 保存・集計用データ管理 */
 const STORE_KEY = 'kangen-survey-v1';
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '2.0.0';
 
 const SHEET_COLUMNS = [
   { key: 'id', label: '送信ID' },
@@ -40,6 +40,9 @@ function defaultState() {
       token: '',
       autoSync: true,
       weekStart: 6,
+      supabaseUrl: '',
+      supabaseAnonKey: '',
+      supabaseAutoSync: true,
       tabletName: ''
     },
     draft: null
@@ -113,6 +116,9 @@ function loadState() {
 function saveState() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    if (typeof onStateSaved === 'function') {
+      try { onStateSaved(); } catch (syncErr) { console.error('sync save failed', syncErr); }
+    }
     return true;
   } catch (err) {
     console.error('save failed', err);

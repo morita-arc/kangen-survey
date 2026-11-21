@@ -682,3 +682,8 @@ body:has(.entry-footer) .main { padding-bottom: 220px; }
 .ledger-table th:first-child, .ledger-table td:first-child { text-align: left; }
 .ledger-table th { color: var(--ink-soft); font-weight: 700; }
 .move-balance { font-size: 12px; color: var(--ink-soft); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.auth-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: 8px; margin-top: 8px; }
+@media (max-width: 760px) {
+  .auth-grid { grid-template-columns: 1fr 1fr; }
+}
