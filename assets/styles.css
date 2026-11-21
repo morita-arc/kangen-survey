@@ -673,3 +673,5 @@ body:has(.entry-footer) .main { padding-bottom: 220px; }
 .cal-notice p { margin: 0; }
 .cal-notice p + p { margin-top: 4px; }
 .res-status { white-space: nowrap; }
+
+.move-actions { display: flex; gap: 6px; }

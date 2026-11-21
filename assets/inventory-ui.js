@@ -256,7 +256,8 @@ function inventoryView() {
               ' <strong>' + moveQtyText(m) + '</strong>' + esc(p ? p.unit : '') + '</span>' +
               '<span class="move-meta">' + esc(m.customerName ? customerLabel(m.customerName) : '') +
               (m.memo ? (m.customerName ? ' ・ ' : '') + esc(m.memo) : '') + '</span>' +
-              '<span class="move-time">' + esc(fmtTime(m.createdAt)) + '</span></li>';
+              '<span class="move-time">' + esc(fmtTime(m.createdAt)) + '</span>' +
+              '<span class="move-actions"><button class="btn small" data-act="move-edit" data-value="' + esc(m.id) + '">編集</button></span></li>';
           }).join('') + '</ul>'
         : '<p class="empty">本日の記録はまだありません。上の「提供を記録」から始めてください。</p>') +
     '</section>';
@@ -638,6 +639,95 @@ function saveAdjust(id) {
   render();
 }
 
+function moveEditModal(id) {
+  const m = state.stockMoves.find(x => x.id === id);
+  if (!m) return;
+  const p = getProduct(m.productId);
+  const products = sortedProducts(true);
+  const isOut = m.type === 'out';
+  const isAdjust = m.type === 'adjust';
+  const customerNames = Array.from(new Set(state.customers.map(c => c.name))).sort((a, b) => a.localeCompare(b, 'ja'));
+  const available = stockQtyExcluding(m.productId, m.date, m.id);
+  const options = products.map(x => '<option value="' + esc(x.id) + '"' + (x.id === m.productId ? ' selected' : '') + '>' +
+    esc(x.name) + '（' + esc(x.unit) + '）</option>').join('') +
+    (!p ? '<option value="' + esc(m.productId) + '" selected>（不明な商品）</option>' : '');
+  $('#modal-root').innerHTML =
+    '<div class="modal-backdrop" data-act="modal-close" data-value="0">' +
+      '<div class="modal move-modal">' +
+        '<h2>' + esc(STOCK_TYPE_LABELS[m.type] || '在庫') + 'の記録を編集</h2>' +
+        '<p class="muted">保存すると在庫と日報が再計算されます。</p>' +
+        '<label class="field"><span>日付</span><input id="move-date" class="input" type="date" value="' + esc(m.date) + '"></label>' +
+        (isOut
+          ? '<label class="field"><span>お客様名</span><input id="move-customer" class="input" type="text" list="move-customers" value="' + esc(m.customerName) + '" autocomplete="off">' +
+            '<datalist id="move-customers">' + customerNames.map(n => '<option value="' + esc(n) + '"></option>').join('') + '</datalist></label>'
+          : '') +
+        '<label class="field"><span>商品</span><select id="move-product" class="input">' + options + '</select></label>' +
+        '<label class="field"><span>数量（' + esc(p ? p.unit : '') + '）</span>' +
+          '<input id="move-qty" class="input" type="number" step="1" min="' + (isAdjust ? -9999 : 1) + '" value="' + m.qty + '"></label>' +
+        (isOut ? '<p class="muted small">この記録を除く、' + esc(m.date) + ' 時点の在庫: ' + available + esc(p ? p.unit : '') + '</p>' : '') +
+        '<label class="field"><span>メモ</span><input id="move-memo" class="input" type="text" value="' + esc(m.memo || '') + '"></label>' +
+        '<div class="modal-actions">' +
+          '<button class="btn ghost danger-text" data-act="move-delete" data-value="' + esc(m.id) + '">削除</button>' +
+          '<button class="btn ghost" data-act="modal-close" data-value="0">キャンセル</button>' +
+          '<button class="btn primary" data-act="move-save" data-value="' + esc(m.id) + '">保存</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function applyMoveEdit(id, values) {
+  const m = state.stockMoves.find(x => x.id === id);
+  if (!m) return;
+  let customerId = '';
+  let customerName = '';
+  if (m.type === 'out') {
+    let customer = findCustomerByName(values.customerName);
+    if (!customer) customer = bestCustomerForName(values.customerName, state.customers, true);
+    if (!customer) customer = createCustomer(values.customerName, 'std');
+    customerId = customer.id;
+    customerName = customer.name;
+  }
+  updateStockMove(id, {
+    date: values.date,
+    productId: values.productId,
+    qty: values.qty,
+    customerId: customerId,
+    customerName: customerName,
+    memo: values.memo
+  });
+  view.invHistoryDate = values.date;
+  view.calendar = null;
+  $('#modal-root').innerHTML = '';
+  toast('記録を更新しました');
+  render();
+}
+
+function saveMoveEdit(id) {
+  const m = state.stockMoves.find(x => x.id === id);
+  if (!m) return;
+  const date = $('#move-date') ? $('#move-date').value : '';
+  const productId = $('#move-product') ? $('#move-product').value : '';
+  const qty = Number($('#move-qty') ? $('#move-qty').value : NaN);
+  const memo = $('#move-memo') ? $('#move-memo').value : '';
+  const customerName = $('#move-customer') ? customerNameClean($('#move-customer').value) : '';
+  if (!date) { toast('日付を入力してください'); return; }
+  if (!productId || !getProduct(productId)) { toast('商品を選択してください'); return; }
+  if (!qty || isNaN(qty)) { toast('数量を入力してください'); return; }
+  if (m.type !== 'adjust' && qty <= 0) { toast('数量は1以上で入力してください'); return; }
+  if (m.type === 'out' && !customerName) { toast('お客様名を入力してください'); return; }
+  const values = { date: date, productId: productId, qty: qty, memo: memo, customerName: customerName };
+  if (m.type === 'out') {
+    const available = stockQtyExcluding(productId, date, id);
+    if (qty > available) {
+      const p = getProduct(productId);
+      confirmDialog('在庫が不足します', (p ? p.name : '商品') + ' は ' + date + ' 時点で在庫 ' + available + ' です。このまま保存しますか？', 'このまま保存', 'primary')
+        .then(ok => { if (ok) applyMoveEdit(id, values); });
+      return;
+    }
+  }
+  applyMoveEdit(id, values);
+}
+
 function reportView() {
   const date = view.reportDate || todayKey();
   const text = buildDailyReport(date, view.reportIncludeDate);
@@ -700,7 +790,10 @@ function invHistoryView() {
             '<span class="move-meta">' + esc(m.customerName ? customerLabel(m.customerName) : '') +
             (m.memo ? (m.customerName ? ' ・ ' : '') + esc(m.memo) : '') + '</span>' +
             '<span class="move-time">' + esc(fmtTime(m.createdAt)) + '</span>' +
-            '<button class="btn small ghost danger-text" data-act="move-delete" data-value="' + esc(m.id) + '">削除</button>' +
+            '<span class="move-actions">' +
+              '<button class="btn small" data-act="move-edit" data-value="' + esc(m.id) + '">編集</button>' +
+              '<button class="btn small ghost danger-text" data-act="move-delete" data-value="' + esc(m.id) + '">削除</button>' +
+            '</span>' +
           '</li>';
         }).join('') + '</ul>'
       : '<div class="empty-state"><p>この日の記録はありません。</p></div>') +
@@ -792,6 +885,8 @@ function handleInventoryClick(e) {
     case 'product-delete': deleteProductFromModal(value); break;
     case 'adjust-stock': adjustStockModal(value); break;
     case 'adjust-save': saveAdjust(value); break;
+    case 'move-edit': moveEditModal(value); break;
+    case 'move-save': saveMoveEdit(value); break;
     case 'draft-step': {
       const input = $('#product-initial');
       if (input) input.value = Math.max(0, (Number(input.value) || 0) + Number(value));
@@ -823,6 +918,7 @@ function handleInventoryClick(e) {
           if (!ok) return;
           deleteStockMove(value);
           view.calendar = null;
+          $('#modal-root').innerHTML = '';
           toast('削除しました');
           render();
         });

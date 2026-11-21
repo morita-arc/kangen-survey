@@ -1,6 +1,6 @@
 /* 保存・集計用データ管理 */
 const STORE_KEY = 'kangen-survey-v1';
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 
 const SHEET_COLUMNS = [
   { key: 'id', label: '送信ID' },
@@ -310,6 +310,23 @@ function addStockMove(input) {
 function deleteStockMove(id) {
   state.stockMoves = state.stockMoves.filter(m => m.id !== id);
   saveState();
+}
+
+function updateStockMove(id, patch) {
+  const move = state.stockMoves.find(m => m.id === id);
+  if (!move || !patch) return null;
+  const qty = Number(patch.qty);
+  if (!qty || isNaN(qty)) return null;
+  if (move.type !== 'adjust' && qty < 0) return null;
+  if (patch.date) move.date = patch.date;
+  if (patch.productId) move.productId = patch.productId;
+  move.qty = qty;
+  if (patch.customerId !== undefined) move.customerId = patch.customerId || '';
+  if (patch.customerName !== undefined) move.customerName = normName(patch.customerName || '');
+  if (patch.memo !== undefined) move.memo = normName(patch.memo || '');
+  move.updatedAt = new Date().toISOString();
+  saveState();
+  return move;
 }
 
 function movesForDate(date) {

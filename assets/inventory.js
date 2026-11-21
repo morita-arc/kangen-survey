@@ -117,6 +117,12 @@ function currentStock(productId) {
   return stockQty(productId, null);
 }
 
+function stockQtyExcluding(productId, uptoDate, excludeId) {
+  return state.stockMoves
+    .filter(m => m.productId === productId && m.id !== excludeId && (!uptoDate || m.date <= uptoDate))
+    .reduce((sum, m) => sum + (m.type === 'out' ? -m.qty : m.qty), 0);
+}
+
 function movesOnDate(date) {
   return state.stockMoves
     .filter(m => m.date === date)
