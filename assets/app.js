@@ -18,6 +18,7 @@ const view = {
   reportIncludeDate: false,
   reservationDate: '',
   linkReservationId: '',
+  productHistoryId: '',
   calendar: null,
   calendarLoading: false,
   invHistoryDate: todayKey()
@@ -34,9 +35,9 @@ const SCREEN_TITLES = {
   settings: '設定',
   inventory: '在庫・特典',
   provide: '提供を記録',
-  purchase: '仕入を記録',
   collect: '回収を記録',
   products: '商品登録',
+  producthistory: '商品の消費履歴',
   report: '日報',
   invhistory: '在庫の履歴'
 };
@@ -101,7 +102,7 @@ function render() {
   const title = SCREEN_TITLES[view.screen] || '';
   $('#top-title').textContent = title;
   $('#back-btn').hidden = (view.screen === 'home');
-  $('#tabbar').hidden = (['survey', 'done', 'provide', 'purchase', 'collect'].indexOf(view.screen) >= 0);
+  $('#tabbar').hidden = (['survey', 'done', 'provide', 'collect'].indexOf(view.screen) >= 0);
   const body = $('#main');
   switch (view.screen) {
     case 'home': body.innerHTML = homeView(); break;
@@ -114,9 +115,9 @@ function render() {
     case 'settings': body.innerHTML = settingsView(); break;
     case 'inventory': body.innerHTML = inventoryView(); break;
     case 'provide':
-    case 'purchase':
     case 'collect': body.innerHTML = entryView(view.screen); break;
     case 'products': body.innerHTML = productsView(); break;
+    case 'producthistory': body.innerHTML = productHistoryView(); break;
     case 'report': body.innerHTML = reportView(); break;
     case 'invhistory': body.innerHTML = invHistoryView(); break;
     default: body.innerHTML = homeView();
@@ -124,7 +125,7 @@ function render() {
   renderSyncBadge();
   $$('#tabbar [data-nav]').forEach(b => b.classList.toggle('active', b.dataset.nav === view.screen ||
     (view.screen === 'detail' && b.dataset.nav === 'customers') ||
-    (['provide', 'purchase', 'collect', 'products', 'report', 'invhistory'].indexOf(view.screen) >= 0 && b.dataset.nav === 'inventory')));
+    (['provide', 'collect', 'products', 'producthistory', 'report', 'invhistory'].indexOf(view.screen) >= 0 && b.dataset.nav === 'inventory')));
   if (view.screen === 'picker') {
     const input = $('#picker-search');
     if (input && view.pickerSearch) input.value = view.pickerSearch;
@@ -193,7 +194,7 @@ function homeView() {
     '<section class="quick">' +
       '<button class="quick-card" data-act="nav" data-value="customers"><span class="quick-title">顧客から探す</span><span class="quick-sub">前回の回答を確認・再利用</span></button>' +
       '<button class="quick-card" data-act="nav" data-value="stats"><span class="quick-title">週次・総集計</span><span class="quick-sub">グラフ・CSV・スプレッドシート</span></button>' +
-      '<button class="quick-card" data-act="nav" data-value="inventory"><span class="quick-title">在庫・日報</span><span class="quick-sub">野菜・コーヒーの提供と仕入</span></button>' +
+      '<button class="quick-card" data-act="nav" data-value="inventory"><span class="quick-title">在庫・日報</span><span class="quick-sub">野菜・コーヒー・備品の提供と回収</span></button>' +
       '<button class="quick-card" data-act="nav" data-value="settings"><span class="quick-title">設定・同期</span><span class="quick-sub">Googleスプレッドシート連携</span></button>' +
     '</section>';
 }
@@ -1125,7 +1126,7 @@ function bindEvents() {
     if (view.screen === 'done') { view.lastDone = null; setScreen('home'); return; }
     if (view.screen === 'detail') { setScreen('customers'); return; }
     if (view.screen === 'picker') { setScreen('home'); return; }
-    if (['provide', 'purchase', 'collect'].indexOf(view.screen) >= 0) {
+    if (['provide', 'collect'].indexOf(view.screen) >= 0) {
       const e = view.entry;
       const hasInput = e && ((Object.keys(e.qty || {}).some(k => Number(e.qty[k]) > 0)) || e.customerName || e.memo);
       if (hasInput) {
@@ -1138,6 +1139,7 @@ function bindEvents() {
       }
       return;
     }
+    if (view.screen === 'producthistory') { setScreen('products'); return; }
     if (['products', 'report', 'invhistory'].indexOf(view.screen) >= 0) { setScreen('inventory'); return; }
     if (view.screen === 'inventory') { setScreen('home'); return; }
     setScreen('home');

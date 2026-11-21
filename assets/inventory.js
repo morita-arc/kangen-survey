@@ -1,6 +1,18 @@
 /* 在庫・特典・日報のロジック */
-const PRODUCT_CATEGORIES = ['野菜', 'コーヒー', 'その他'];
-const STOCK_TYPE_LABELS = { in: '仕入', out: '提供', return: '回収', adjust: '調整' };
+const PRODUCT_CATEGORIES = ['野菜', 'コーヒー', '備品'];
+const CATEGORY_FIXED_UNITS = { '野菜': '袋', 'コーヒー': '個' };
+const EQUIPMENT_UNITS = ['個', '枚', '本', '箱', '袋', 'セット', 'ロール', '缶', 'パック', 'ケース'];
+const STOCK_TYPE_LABELS = { in: '初期在庫', out: '提供', return: '回収', adjust: '調整' };
+
+function normalizeCategory(category) {
+  return PRODUCT_CATEGORIES.indexOf(category) >= 0 ? category : '備品';
+}
+
+function unitForCategory(category, requested) {
+  const c = normalizeCategory(category);
+  if (CATEGORY_FIXED_UNITS[c]) return CATEGORY_FIXED_UNITS[c];
+  return normName(requested || '') || '個';
+}
 
 function customerNameClean(name) {
   return normName(name).replace(/\s*様$/, '');
@@ -123,6 +135,45 @@ function stockQtyExcluding(productId, uptoDate, excludeId) {
     .reduce((sum, m) => sum + (m.type === 'out' ? -m.qty : m.qty), 0);
 }
 
+function consumedQty(productId) {
+  return state.stockMoves
+    .filter(m => m.productId === productId && m.type === 'out')
+    .reduce((sum, m) => sum + m.qty, 0);
+}
+
+function productLedger(productId) {
+  const moves = state.stockMoves
+    .filter(m => m.productId === productId)
+    .slice()
+    .sort((a, b) => (a.date + a.createdAt).localeCompare(b.date + b.createdAt));
+  let balance = 0;
+  const rows = moves.map(move => {
+    balance += move.type === 'out' ? -move.qty : move.qty;
+    return { move: move, balance: balance };
+  });
+  const monthMap = new Map();
+  rows.forEach(row => {
+    const month = row.move.date.slice(0, 7);
+    if (!monthMap.has(month)) monthMap.set(month, { month: month, consumed: 0, replenished: 0, adjusted: 0, end: 0 });
+    const entry = monthMap.get(month);
+    if (row.move.type === 'out') entry.consumed += row.move.qty;
+    else if (row.move.type === 'return') entry.replenished += row.move.qty;
+    else if (row.move.type === 'adjust') entry.adjusted += row.move.qty;
+    entry.end = row.balance;
+  });
+  const consumed = rows.filter(r => r.move.type === 'out').reduce((s, r) => s + r.move.qty, 0);
+  const replenished = rows.filter(r => r.move.type === 'return').reduce((s, r) => s + r.move.qty, 0);
+  const lastConsumed = rows.filter(r => r.move.type === 'out').slice(-1)[0];
+  return {
+    rows: rows.slice().reverse(),
+    consumed: consumed,
+    replenished: replenished,
+    byMonth: Array.from(monthMap.values()).sort((a, b) => b.month.localeCompare(a.month)),
+    current: balance,
+    lastConsumed: lastConsumed ? lastConsumed.move.date : ''
+  };
+}
+
 function movesOnDate(date) {
   return state.stockMoves
     .filter(m => m.date === date)
@@ -197,13 +248,17 @@ function buildDailyReport(date, includeDate) {
   if (includeDate) blocks.push(reportDateLabel(date));
   blocks.push('【返信不要】\nお疲れ様です。');
 
-  if (summary.returns.length) {
-    blocks.push('【回収】\n' + summary.returns.map(r => r.product.name + '/' + r.qty).join('\n'));
+  const reportReturns = summary.returns.filter(r => r.product.category !== '備品');
+  const reportProvides = summary.provides.filter(p => p.product.category !== '備品');
+  const reportStock = summary.stock.filter(s => s.product.category !== '備品');
+
+  if (reportReturns.length) {
+    blocks.push('【回収】\n' + reportReturns.map(r => r.product.name + '/' + r.qty).join('\n'));
   }
 
-  if (summary.provides.length) {
+  if (reportProvides.length) {
     const lines = [];
-    summary.provides.forEach(item => {
+    reportProvides.forEach(item => {
       lines.push(item.product.name + '/' + item.total);
       item.customers.forEach(c => {
         if (!c.name || c.name === '（名前なし）') return;
@@ -213,8 +268,8 @@ function buildDailyReport(date, includeDate) {
     blocks.push('【提供】\n' + lines.join('\n'));
   }
 
-  if (summary.stock.length) {
-    blocks.push('【在庫】\n' + summary.stock.map(s => s.product.name + '/' + s.qty).join('\n'));
+  if (reportStock.length) {
+    blocks.push('【在庫】\n' + reportStock.map(s => s.product.name + '/' + s.qty).join('\n'));
   }
 
   blocks.push('よろしくお願いいたします。');

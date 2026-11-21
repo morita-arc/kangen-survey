@@ -1,4 +1,4 @@
-const CACHE = 'kangen-survey-v1.6.1';
+const CACHE = 'kangen-survey-v1.7.0';
 const ASSETS = [
   './',
   './index.html',

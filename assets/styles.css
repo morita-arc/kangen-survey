@@ -448,7 +448,7 @@ body:has(.survey-footer) .main { padding-bottom: 150px; }
 .inv-hero h1 { font-size: 30px; margin: 4px 0 6px; }
 .inv-hero .lead { color: #e6e0d2; font-size: 14px; max-width: 520px; }
 .inv-hero-actions { width: min(360px, 100%); flex: none; }
-.inv-actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+.inv-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
 .inv-action {
   display: flex; flex-direction: column; gap: 3px; text-align: left;
   background: var(--card); border: 1px solid var(--line); border-radius: 16px;
@@ -675,3 +675,10 @@ body:has(.entry-footer) .main { padding-bottom: 220px; }
 .res-status { white-space: nowrap; }
 
 .move-actions { display: flex; gap: 6px; }
+
+.ledger-table-wrap { overflow-x: auto; }
+.ledger-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ledger-table th, .ledger-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.ledger-table th:first-child, .ledger-table td:first-child { text-align: left; }
+.ledger-table th { color: var(--ink-soft); font-weight: 700; }
+.move-balance { font-size: 12px; color: var(--ink-soft); margin-left: auto; font-variant-numeric: tabular-nums; }

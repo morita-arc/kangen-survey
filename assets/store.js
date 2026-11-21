@@ -1,6 +1,6 @@
 /* 保存・集計用データ管理 */
 const STORE_KEY = 'kangen-survey-v1';
-const APP_VERSION = '1.6.1';
+const APP_VERSION = '1.7.0';
 
 const SHEET_COLUMNS = [
   { key: 'id', label: '送信ID' },
@@ -47,6 +47,38 @@ function defaultState() {
 }
 
 let state = loadState();
+
+function normalizeProductRecord(p) {
+  if (!p || typeof p !== 'object') return p;
+  if (p.category === 'その他' || ['野菜', 'コーヒー', '備品'].indexOf(p.category) < 0) p.category = '備品';
+  if (p.category === '野菜') p.unit = '袋';
+  else if (p.category === 'コーヒー') p.unit = '個';
+  else if (!p.unit) p.unit = '個';
+  return p;
+}
+
+function normalizeMoveRecord(m) {
+  if (!m || typeof m !== 'object') return m;
+  if (m.type === 'in' && m.memo !== '初期在庫') m.type = 'return';
+  return m;
+}
+
+function migrateInventoryData() {
+  let changed = false;
+  state.products.forEach(p => {
+    const before = p.category + '|' + p.unit;
+    normalizeProductRecord(p);
+    if (before !== p.category + '|' + p.unit) changed = true;
+  });
+  state.stockMoves.forEach(m => {
+    const before = m.type;
+    normalizeMoveRecord(m);
+    if (before !== m.type) changed = true;
+  });
+  if (changed) saveState();
+}
+
+migrateInventoryData();
 
 function normalizeReservationLinks(raw) {
   const links = raw && typeof raw === 'object' ? raw : {};
@@ -251,12 +283,13 @@ function addProduct(input) {
   const product = {
     id: uid('prd'),
     name: normName(input.name),
-    category: input.category || '野菜',
-    unit: normName(input.unit) || '袋',
+    category: ['野菜', 'コーヒー', '備品'].indexOf(input.category) >= 0 ? input.category : '備品',
+    unit: normName(input.unit) || '個',
     sort: nextProductSort(),
     active: true,
     createdAt: new Date().toISOString()
   };
+  normalizeProductRecord(product);
   state.products.push(product);
   saveState();
   const initial = Number(input.initial) || 0;
@@ -269,9 +302,12 @@ function addProduct(input) {
 function updateProduct(id, patch) {
   const p = getProduct(id);
   if (!p) return null;
+  if (patch.category !== undefined) patch.category = ['野菜', 'コーヒー', '備品'].indexOf(patch.category) >= 0 ? patch.category : '備品';
   ['name', 'category', 'unit', 'active'].forEach(k => {
     if (patch[k] !== undefined) p[k] = patch[k];
   });
+  normalizeProductRecord(p);
+  if (p.category === '野菜' || p.category === 'コーヒー') p.unit = p.category === '野菜' ? '袋' : '個';
   saveState();
   return p;
 }
@@ -542,6 +578,7 @@ function importBackup(text) {
   (data.products || []).forEach(p => {
     if (!p || !p.id) return;
     if (!state.products.find(x => x.id === p.id)) {
+      normalizeProductRecord(p);
       state.products.push(p);
       addedProducts++;
     }
@@ -549,6 +586,7 @@ function importBackup(text) {
   const moveIds = new Set(state.stockMoves.map(m => m.id));
   (data.stockMoves || []).forEach(m => {
     if (!m || !m.id || moveIds.has(m.id)) return;
+    normalizeMoveRecord(m);
     state.stockMoves.push(m);
     moveIds.add(m.id);
     addedMoves++;

@@ -206,7 +206,7 @@ function inventoryView() {
   return '' +
     '<section class="inv-hero">' +
       '<div><p class="eyebrow">在庫・特典</p><h1>在庫管理</h1>' +
-      '<p class="lead">野菜・コーヒーの提供、仕入、回収を記録。日報はコピーしてそのまま送れます。</p></div>' +
+      '<p class="lead">野菜・コーヒー・備品の提供と回収を記録。日報はコピーしてそのまま送れます。</p></div>' +
       '<div class="inv-hero-actions">' +
         '<button class="btn primary xl" data-act="inv-entry" data-value="out">＋ 提供を記録</button>' +
       '</div>' +
@@ -222,11 +222,10 @@ function inventoryView() {
     reservationPanel(view.reservationDate || today, 'inventory') +
 
     '<section class="inv-actions">' +
-      '<button class="inv-action" data-act="inv-entry" data-value="in"><span class="inv-action-title">仕入を記録</span><span class="inv-action-sub">いつ・何個入ったか</span></button>' +
       '<button class="inv-action" data-act="inv-entry" data-value="return"><span class="inv-action-title">回収を記録</span><span class="inv-action-sub">在庫に加算（補充）</span></button>' +
       '<button class="inv-action" data-act="inv-report"><span class="inv-action-title">日報を作成</span><span class="inv-action-sub">コピーしてチャットへ</span></button>' +
-      '<button class="inv-action" data-act="product-add"><span class="inv-action-title">商品登録</span><span class="inv-action-sub">野菜・コーヒーの種類</span></button>' +
-      '<button class="inv-action" data-act="inv-history"><span class="inv-action-title">履歴</span><span class="inv-action-sub">提供・仕入・回収の記録</span></button>' +
+      '<button class="inv-action" data-act="product-add"><span class="inv-action-title">商品登録</span><span class="inv-action-sub">野菜・コーヒー・備品</span></button>' +
+      '<button class="inv-action" data-act="inv-history"><span class="inv-action-title">履歴</span><span class="inv-action-sub">提供・回収・初期在庫の記録</span></button>' +
     '</section>' +
 
     '<section class="panel">' +
@@ -242,7 +241,7 @@ function inventoryView() {
                 '<button class="btn small" data-act="adjust-stock" data-value="' + esc(p.id) + '">調整</button>' +
               '</div>';
             }).join('') + '</div>').join('')
-        : '<div class="empty-state"><p>商品が登録されていません。野菜・コーヒーの種類を登録してください。</p>' +
+        : '<div class="empty-state"><p>商品が登録されていません。野菜・コーヒー・備品を登録してください。</p>' +
           '<button class="btn primary" data-act="product-add">商品を登録</button></div>') +
     '</section>' +
 
@@ -285,7 +284,7 @@ function startEntry(kind, date) {
     qty: {},
     saving: false
   };
-  const screen = kind === 'out' ? 'provide' : kind === 'in' ? 'purchase' : 'collect';
+  const screen = kind === 'out' ? 'provide' : 'collect';
   setScreen(screen);
 }
 
@@ -303,7 +302,7 @@ function applyReservationToEntry(ev, date) {
 }
 
 function entryView(screen) {
-  const kind = screen === 'provide' ? 'out' : screen === 'purchase' ? 'in' : 'return';
+  const kind = screen === 'provide' ? 'out' : 'return';
   const e = view.entry;
   if (!e || e.kind !== kind) {
     return '<div class="empty-state"><p>入力画面を開き直してください。</p>' +
@@ -330,15 +329,15 @@ function entryView(screen) {
         : '') +
       '<label class="field"><span>日付（過去の日付も選べます）</span>' +
         '<input class="input" type="date" data-input="entry-date" value="' + esc(e.date) + '"></label>' +
-      '<label class="field"><span>' + (kind === 'in' ? '仕入先・メモ' : 'メモ（任意）') + '</span>' +
-        '<input class="input" type="text" data-input="entry-memo" value="' + esc(e.memo) + '" placeholder="' + (kind === 'in' ? '例）○○青果' : '例）返却分') + '"></label>' +
+      '<label class="field"><span>' + 'メモ（任意）' + '</span>' +
+        '<input class="input" type="text" data-input="entry-memo" value="' + esc(e.memo) + '" placeholder="例）補充分"></label>' +
       (kind === 'return'
         ? '<p class="inv-note">回収した分は在庫に加算されます（在庫補充）。</p>'
         : '') +
     '</section>' +
 
     '<section class="panel entry-products">' +
-      '<div class="panel-head"><h2>' + (isOut ? '提供する商品' : kind === 'in' ? '仕入れた商品' : '回収した商品') + '</h2>' +
+      '<div class="panel-head"><h2>' + (isOut ? '提供する商品' : '回収した商品') + '</h2>' +
       '<span class="muted small">数量を入力（＋ / −）</span></div>' +
       (products.length ? '<div class="entry-list">' + products.map(p => {
         const qty = Number(e.qty[p.id]) || 0;
@@ -364,7 +363,7 @@ function entryView(screen) {
     '<div class="entry-footer">' +
       '<div class="entry-total">合計 <strong>' + total + '</strong> 点</div>' +
       '<button class="btn primary lg" data-act="entry-save">' +
-        (isOut ? '提供を保存' : kind === 'in' ? '仕入を保存' : '回収を保存') + '</button>' +
+        (isOut ? '提供を保存' : '回収を保存') + '</button>' +
     '</div>';
 }
 
@@ -518,6 +517,46 @@ function clearReservationLink(id) {
 }
 
 
+function productHistoryView() {
+  const p = getProduct(view.productHistoryId);
+  if (!p) {
+    return '<div class="empty-state"><p>商品が見つかりません。</p><button class="btn" data-act="nav" data-value="inventory">在庫へ戻る</button></div>';
+  }
+  const data = productLedger(p.id);
+  const month = todayKey().slice(0, 7);
+  const thisMonth = data.byMonth.find(x => x.month === month) || { consumed: 0, replenished: 0, adjusted: 0, end: data.current };
+  const monthly = data.byMonth.length
+    ? '<div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>月</th><th>消費</th><th>回収</th><th>調整</th><th>月末在庫</th></tr></thead><tbody>' +
+      data.byMonth.map(x => '<tr><td>' + esc(x.month) + '</td><td>' + x.consumed + esc(p.unit) + '</td><td>' + x.replenished + esc(p.unit) + '</td><td>' + (x.adjusted > 0 ? '+' : '') + x.adjusted + '</td><td>' + x.end + esc(p.unit) + '</td></tr>').join('') +
+      '</tbody></table></div>'
+    : '<p class="empty">まだ記録がありません。</p>';
+  const ledger = data.rows.length
+    ? '<ul class="move-list">' + data.rows.map(row => {
+        const m = row.move;
+        return '<li class="move-row">' + typeBadge(m.type) +
+          '<span class="move-main">' + esc(reportDateLabel(m.date)) + ' <strong>' + moveQtyText(m) + '</strong>' + esc(p.unit) + '</span>' +
+          '<span class="move-meta">' + esc(m.customerName ? customerLabel(m.customerName) : '') +
+            (m.memo ? (m.customerName ? ' ・ ' : '') + esc(m.memo) : '') + '</span>' +
+          '<span class="move-balance">残高 ' + row.balance + esc(p.unit) + '</span>' +
+          '<span class="move-actions"><button class="btn small" data-act="move-edit" data-value="' + esc(m.id) + '">編集</button></span>' +
+        '</li>';
+      }).join('') + '</ul>'
+    : '<p class="empty">まだ記録がありません。</p>';
+
+  return '' +
+    '<div class="panel-head"><h2>' + esc(p.name) + ' の消費履歴</h2>' +
+      '<button class="btn small" data-act="product-edit" data-value="' + esc(p.id) + '">商品を編集</button></div>' +
+    '<section class="kpis">' +
+      kpi('現在の在庫', data.current + '<span class="unit">' + esc(p.unit) + '</span>') +
+      kpi('今月の消費', thisMonth.consumed + '<span class="unit">' + esc(p.unit) + '</span>') +
+      kpi('全期間の消費', data.consumed + '<span class="unit">' + esc(p.unit) + '</span>') +
+      kpi('最終消費', data.lastConsumed ? esc(reportDateLabel(data.lastConsumed)) : '—') +
+    '</section>' +
+    (p.category === '備品' ? '<p class="inv-note">備品の消費は日報に記載されません。</p>' : '') +
+    '<section class="panel"><div class="panel-head"><h2>月別</h2><span class="muted small">消費は提供の合計</span></div>' + monthly + '</section>' +
+    '<section class="panel"><div class="panel-head"><h2>履歴</h2><span class="muted small">残高は記録ごとの在庫</span></div>' + ledger + '</section>';
+}
+
 function productsView() {
   const products = state.products.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0));
   return '' +
@@ -525,10 +564,12 @@ function productsView() {
     (products.length
       ? '<ul class="product-list">' + products.map(p => {
           const qty = currentStock(p.id);
+          const consumed = consumedQty(p.id);
           return '<li class="product-row ' + (p.active === false ? 'inactive' : '') + '">' +
             '<div class="product-main"><span class="product-name">' + esc(p.name) + '</span>' +
-              '<span class="product-sub">' + esc(p.category) + ' ・ ' + esc(p.unit) + (p.active === false ? ' ・ 非表示' : '') + '</span></div>' +
+              '<span class="product-sub">' + esc(p.category) + ' ・ ' + esc(p.unit) + ' ・ 累計消費 ' + consumed + esc(p.unit) + (p.active === false ? ' ・ 非表示' : '') + '</span></div>' +
             '<div class="stock-qty ' + stockClass(qty) + '"><strong>' + qty + '</strong><span>' + esc(p.unit) + '</span></div>' +
+            '<button class="btn small" data-act="product-history" data-value="' + esc(p.id) + '">履歴</button>' +
             '<button class="btn small" data-act="product-edit" data-value="' + esc(p.id) + '">編集</button>' +
           '</li>';
         }).join('') + '</ul>'
@@ -540,19 +581,24 @@ function productModal(id) {
   const p = id ? getProduct(id) : null;
   const isEdit = !!p;
   const qty = p ? currentStock(p.id) : 0;
+  const category = p ? normalizeCategory(p.category) : '野菜';
+  const fixedUnit = CATEGORY_FIXED_UNITS[category] || '';
+  const unit = p ? p.unit : (fixedUnit || '個');
+  const unitOptions = EQUIPMENT_UNITS.map(u => '<option value="' + esc(u) + '"></option>').join('');
   $('#modal-root').innerHTML =
     '<div class="modal-backdrop" data-act="modal-close" data-value="0">' +
       '<div class="modal">' +
         '<h2>' + (isEdit ? '商品を編集' : '商品を追加') + '</h2>' +
         '<label class="field"><span>商品名</span>' +
-          '<input id="product-name" class="input" type="text" autocomplete="off" value="' + esc(p ? p.name : '') + '" placeholder="例）ミックス、アラビカ"></label>' +
+          '<input id="product-name" class="input" type="text" autocomplete="off" value="' + esc(p ? p.name : '') + '" placeholder="例）ミックス、アラビカ、ペーパー"></label>' +
         '<label class="field"><span>種類</span>' +
-          '<select id="product-category" class="input">' +
-            PRODUCT_CATEGORIES.map(c => '<option value="' + esc(c) + '"' + ((p ? p.category : '野菜') === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('') +
+          '<select id="product-category" class="input" data-input="product-category">' +
+            PRODUCT_CATEGORIES.map(c => '<option value="' + esc(c) + '"' + (category === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('') +
           '</select></label>' +
         '<label class="field"><span>単位</span>' +
-          '<input id="product-unit" class="input" type="text" list="unit-options" autocomplete="off" value="' + esc(p ? p.unit : '袋') + '" placeholder="袋 / 個 / 杯 など">' +
-          '<datalist id="unit-options"><option value="袋"></option><option value="個"></option><option value="杯"></option><option value="本"></option><option value="箱"></option></datalist></label>' +
+          '<input id="product-unit" class="input" type="text" list="unit-options" autocomplete="off" data-input="product-unit" value="' + esc(unit) + '"' + (fixedUnit ? ' readonly' : '') + ' placeholder="例）個 / 枚 / 本 / 箱">' +
+          '<datalist id="unit-options">' + unitOptions + '</datalist>' +
+          '<span class="muted small" id="product-unit-note">' + (fixedUnit ? 'この種類は「' + esc(fixedUnit) + '」固定です' : '備品は自由に単位を選べます') + '</span></label>' +
         (isEdit
           ? '<p class="muted small">現在の在庫：' + qty + esc(p.unit) + '（変更は「在庫」→「調整」から）</p>' +
             '<label class="check"><input id="product-active" type="checkbox"' + (p.active === false ? '' : ' checked') + '> 提供画面に表示する</label>'
@@ -561,6 +607,7 @@ function productModal(id) {
             '<input id="product-initial" class="step-input" type="number" inputmode="numeric" min="0" step="1" value="0">' +
             '<button class="step-btn" data-act="draft-step" data-value="1" aria-label="増やす">＋</button></div></label>') +
         '<div class="modal-actions">' +
+          (isEdit ? '<button class="btn ghost" data-act="product-history" data-value="' + esc(p.id) + '">消費履歴</button>' : '') +
           (isEdit ? '<button class="btn ghost danger-text" data-act="product-delete" data-value="' + esc(p.id) + '">削除</button>' : '') +
           '<button class="btn ghost" data-act="modal-close" data-value="0">キャンセル</button>' +
           '<button class="btn primary" data-act="product-save" data-value="' + esc(p ? p.id : '') + '">保存</button>' +
@@ -573,7 +620,7 @@ function productModal(id) {
 function saveProduct(id) {
   const name = normName($('#product-name') ? $('#product-name').value : '');
   const category = $('#product-category') ? $('#product-category').value : '野菜';
-  const unit = normName($('#product-unit') ? $('#product-unit').value : '') || '袋';
+  const unit = unitForCategory(category, $('#product-unit') ? $('#product-unit').value : '');
   if (!name) { toast('商品名を入力してください'); return; }
   const duplicate = state.products.find(p => p.id !== id && normName(p.name) === name);
   if (duplicate) { toast('同じ名前の商品が登録されています'); return; }
@@ -732,8 +779,8 @@ function reportView() {
   const date = view.reportDate || todayKey();
   const text = buildDailyReport(date, view.reportIncludeDate);
   const summary = dailyInventorySummary(date);
-  const provided = summary.provides.reduce((s, x) => s + x.total, 0);
-  const returned = summary.returns.reduce((s, x) => s + x.qty, 0);
+  const provided = summary.provides.filter(x => x.product.category !== '備品').reduce((s, x) => s + x.total, 0);
+  const returned = summary.returns.filter(x => x.product.category !== '備品').reduce((s, x) => s + x.qty, 0);
   const rows = Math.max(14, Math.min(40, text.split('\n').length + 2));
   return '' +
     '<div class="date-nav">' +
@@ -750,7 +797,7 @@ function reportView() {
       '<button class="btn" data-act="report-shift" data-value="-1">前日を見る</button>' +
       '<button class="btn" data-act="report-shift" data-value="1">翌日を見る</button>' +
     '</div>' +
-    '<p class="muted small">チャットにそのまま貼り付けてください。過去の日付も上の日付から選べます。</p>';
+    '<p class="muted small">チャットにそのまま貼り付けてください。過去の日付も上の日付から選べます。備品は日報に含まれません。</p>';
 }
 
 function copyReport() {
@@ -881,6 +928,10 @@ function handleInventoryClick(e) {
     case 'entry-save': saveEntry(); break;
     case 'product-add': productModal(null); break;
     case 'product-edit': productModal(value); break;
+    case 'product-history':
+      view.productHistoryId = value;
+      setScreen('producthistory');
+      break;
     case 'product-save': saveProduct(value); break;
     case 'product-delete': deleteProductFromModal(value); break;
     case 'adjust-stock': adjustStockModal(value); break;
@@ -964,6 +1015,24 @@ function handleInventoryInput(e) {
     });
     return;
   }
+  if (key === 'product-category') {
+    const category = normalizeCategory(t.value);
+    const unitInput = $('#product-unit');
+    const note = $('#product-unit-note');
+    const fixed = CATEGORY_FIXED_UNITS[category];
+    if (unitInput) {
+      if (fixed) {
+        unitInput.value = fixed;
+        unitInput.readOnly = true;
+      } else {
+        unitInput.readOnly = false;
+        if (!unitInput.value || Object.keys(CATEGORY_FIXED_UNITS).some(k => CATEGORY_FIXED_UNITS[k] === unitInput.value)) unitInput.value = '個';
+      }
+    }
+    if (note) note.textContent = fixed ? 'この種類は「' + fixed + '」固定です' : '備品は自由に単位を選べます';
+    return;
+  }
+  if (key === 'product-unit') return;
   if (key === 'entry-qty') {
     if (!view.entry) return;
     const id = t.dataset.id;
@@ -993,7 +1062,7 @@ document.addEventListener('click', handleInventoryClick);
 document.addEventListener('input', handleInventoryInput);
 document.addEventListener('change', e => {
   const t = e.target;
-  if (t && t.dataset && (t.dataset.input === 'entry-date' || t.dataset.input === 'report-date' || t.dataset.input === 'res-date')) {
+  if (t && t.dataset && (t.dataset.input === 'entry-date' || t.dataset.input === 'report-date' || t.dataset.input === 'res-date' || t.dataset.input === 'product-category')) {
     handleInventoryInput(e);
   }
   if (t && t.dataset && t.dataset.input === 'report-include-date') {
