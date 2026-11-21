@@ -631,9 +631,9 @@ function settingsView() {
           '<li>発行された「/exec」のURLを上に貼り付け →「接続テスト」</li>' +
           '<li>設定済みの場合は「デプロイを管理」→ 編集 → バージョン: 新しいバージョン → デプロイ（URLは変わりません）</li>' +
         '</ol>' +
-        '<p class="small"><a class="link" href="https://docs.google.com/document/d/1STagmQ1YqUgJjPMtJanqkMEqwkVRjjMdhDPPbc-Orio/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
+        '<p class="small"><a class="link" href="https://docs.google.com/document/d/1igH3o3-zTNDAk9hImDc3Z-8rAEcMMJwTTEhg1pIqG84/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
         '<a class="link" href="https://docs.google.com/spreadsheets/d/1JXC-kQ4Mtnb1VI7TM35QB8lf8I-hp3v_doLsEv79lxA/edit" target="_blank" rel="noopener">スプレッドシート</a></p>' +
-        '<p class="small">Googleカレンダーの予約は、在庫・提供・アンケート開始後の顧客選択画面に表示されます。既定では bran-room@nse-ed.com が作成した「様」付きの予定だけを対象にします。予約名はひらがな・カタカナの違いを自動照合し、違う場合は「顧客を紐付け」から選べます。Code.gs更新後は setupSheet を実行してカレンダーの権限を承認し、「デプロイを管理」→ 新しいバージョンで再デプロイしてください。接続テストに予約取得の結果と原因が表示されます。</p>' +
+        '<p class="small">Googleカレンダーの予約は、在庫・提供・アンケート開始後の顧客選択画面に表示されます。店舗カレンダー bran-room@nse-ed.com の「様」付き予定を読み込みます。予約名はひらがな・カタカナの違いを自動照合し、違う場合は「顧客を紐付け」から選べます。Code.gs更新後は setupSheet を実行してカレンダーの権限を承認し、「デプロイを管理」→ 新しいバージョンで再デプロイしてください。接続テストに予約取得の結果と原因が表示されます。</p>' +
       '</details>' +
     '</section>' +
 
