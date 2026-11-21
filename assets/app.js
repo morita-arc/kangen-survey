@@ -549,6 +549,74 @@ function copyWeeklySurveyReport() {
   copyPlainText(text, '今週の報告をコピーしました（' + count + '件）');
 }
 
+let chatworkSending = false;
+
+function chatworkRoomId() {
+  return String(state.settings.chatworkRoomId || '').replace(/[^0-9]/g, '');
+}
+
+async function sendChatWorkMessage(text) {
+  if (!state.settings.sheetUrl) throw new Error('Apps ScriptのURLが未設定です');
+  const roomId = chatworkRoomId();
+  if (!String(text || '').trim()) throw new Error('送信内容が空です');
+  const base = state.settings.sheetUrl;
+  const join = base.indexOf('?') >= 0 ? '&' : '?';
+  const url = base + join + 'action=chatwork' +
+    '&roomId=' + encodeURIComponent(roomId) +
+    '&token=' + encodeURIComponent(state.settings.token) +
+    '&text=' + encodeURIComponent(text);
+  const data = await jsonp(url, 30000);
+  if (!data || !data.ok) {
+    const err = new Error(data && Array.isArray(data.rows)
+      ? 'Code.gsが古い可能性があります。v7以降に更新して再デプロイしてください'
+      : ((data && data.error) || 'ChatWorkに送信できませんでした'));
+    err.hint = data && data.hint;
+    err.detail = data && data.detail;
+    throw err;
+  }
+  return data;
+}
+
+function chatworkErrorMessage(err) {
+  return (err && err.message ? err.message : '送信できませんでした') +
+    (err && err.detail ? '（' + err.detail + '）' : '') +
+    (err && err.hint ? ' ' + err.hint : '');
+}
+
+async function sendWeeklySurveyReportToChatWork() {
+  if (chatworkSending) return;
+  const text = buildWeeklySurveyReport(state.submissions, new Date(), state.settings.weekStart);
+  const range = periodRange('week', new Date(), state.settings.weekStart);
+  const count = state.submissions.filter(s => inRange(s.date, range.from, range.to)).length;
+  const ok = await confirmDialog('ChatWorkに送信', '今週の報告（' + count + '件）をChatWorkのグループへ送信します。', '送信する', 'primary');
+  if (!ok) return;
+  chatworkSending = true;
+  toast('ChatWorkに送信しています…');
+  try {
+    await sendChatWorkMessage(text);
+    toast('ChatWorkに送信しました（' + count + '件）');
+  } catch (err) {
+    toast('ChatWorkに送信できませんでした：' + chatworkErrorMessage(err));
+  } finally {
+    chatworkSending = false;
+  }
+}
+
+async function sendChatWorkTest() {
+  if (chatworkSending) return;
+  const ok = await confirmDialog('ChatWorkにテスト送信', '設定したグループへテストメッセージを送信します。', '送信する', 'primary');
+  if (!ok) return;
+  chatworkSending = true;
+  try {
+    await sendChatWorkMessage('かんげんアンケートのテスト送信です。');
+    toast('ChatWorkにテスト送信しました');
+  } catch (err) {
+    toast('テスト送信できませんでした：' + chatworkErrorMessage(err));
+  } finally {
+    chatworkSending = false;
+  }
+}
+
 function statsView() {
   const { range, list } = statsFiltered();
   const agg = aggregate(list, view.statsRoom);
@@ -626,6 +694,7 @@ function statsView() {
 
     '<div class="stats-actions">' +
       '<button class="btn primary" data-act="stats-weekly-copy">今週の報告をコピー</button>' +
+      '<button class="btn" data-act="stats-weekly-chatwork">ChatWorkに送信</button>' +
       '<button class="btn" data-act="stats-csv">CSVダウンロード</button>' +
       '<button class="btn" data-act="stats-print">印刷 / PDF</button>' +
       '<button class="btn' + (state.settings.sheetUrl ? '' : ' hidden') + '" data-act="sync-all">シートと同期</button>' +
@@ -648,7 +717,7 @@ function settingsView() {
       '<p class="muted small">Apps Script のウェブアプリURLを設定すると、送信時に回答がスプレッドシートへ自動追記されます。設定手順は同梱のREADMEを参照してください。</p>' +
       '<label class="field"><span>ウェブアプリURL</span>' +
       '<input class="input" type="url" data-input="sheet-url" value="' + esc(s.sheetUrl) + '" placeholder="https://script.google.com/macros/s/.../exec"></label>' +
-      '<label class="field"><span>合言葉（任意・Apps Scriptと同じ文字列）</span>' +
+      '<label class="field"><span>合言葉（ChatWork送信を使う場合は必須・Apps Scriptと同じ文字列）</span>' +
       '<input class="input" type="text" data-input="sheet-token" value="' + esc(s.token) + '" placeholder="例）kangen2026"></label>' +
       '<label class="check"><input type="checkbox" data-input="auto-sync"' + (s.autoSync ? ' checked' : '') + '> 送信時に自動で同期する</label>' +
       '<div class="row-buttons">' +
@@ -667,9 +736,31 @@ function settingsView() {
           '<li>発行された「/exec」のURLを上に貼り付け →「接続テスト」</li>' +
           '<li>設定済みの場合は「デプロイを管理」→ 編集 → バージョン: 新しいバージョン → デプロイ（URLは変わりません）</li>' +
         '</ol>' +
-        '<p class="small"><a class="link" href="https://docs.google.com/document/d/1igH3o3-zTNDAk9hImDc3Z-8rAEcMMJwTTEhg1pIqG84/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
+        '<p class="small"><a class="link" href="https://docs.google.com/document/d/1O7__EIIeKYcI1oc7PelGVvSczf57MOFuSiFj9Ort-5U/edit" target="_blank" rel="noopener">Code.gs（最新版）</a> ／ ' +
         '<a class="link" href="https://docs.google.com/spreadsheets/d/1JXC-kQ4Mtnb1VI7TM35QB8lf8I-hp3v_doLsEv79lxA/edit" target="_blank" rel="noopener">スプレッドシート</a></p>' +
         '<p class="small">Googleカレンダーの予約は、在庫・提供・アンケート開始後の顧客選択画面に表示されます。店舗カレンダー bran-room@nse-ed.com の「様」付き予定を読み込みます。予約名はひらがな・カタカナの違いを自動照合し、違う場合は「顧客を紐付け」から選べます。Code.gs更新後は setupSheet を実行してカレンダーの権限を承認し、「デプロイを管理」→ 新しいバージョンで再デプロイしてください。接続テストに予約取得の結果と原因が表示されます。</p>' +
+      '</details>' +
+    '</section>' +
+
+    '<section class="panel">' +
+      '<h2>ChatWorkへ直接送信</h2>' +
+      '<p class="muted small">集計画面の「ChatWorkに送信」から、週間報告をコピーせずにグループへ送信できます。「今週の報告をコピー」もそのまま使えます。</p>' +
+      '<label class="field"><span>ChatWorkルームID</span>' +
+      '<input class="input" type="text" inputmode="numeric" data-input="chatwork-room-id" value="' + esc(s.chatworkRoomId || '') + '" placeholder="例）123456789"></label>' +
+      '<p class="muted small">グループURLの <code>#!rid123456789</code> の数字部分です。</p>' +
+      '<div class="row-buttons">' +
+        '<button class="btn" data-act="chatwork-test">テスト送信</button>' +
+      '</div>' +
+      '<details class="guide"><summary>ChatWork送信の設定方法</summary>' +
+        '<ol class="tips">' +
+          '<li>ChatWork右上の名前 →「サービス連携」→「API Token」でAPIトークンを発行</li>' +
+          '<li>Apps Scriptの「プロジェクトの設定」→「スクリプト プロパティ」に <code>CHATWORK_TOKEN</code> を追加</li>' +
+          '<li>必要なら <code>CHATWORK_ROOM_ID</code> も追加（上のルームIDが優先されます）</li>' +
+          '<li>Code.gs（v7以降）を貼り直し、関数 <code>authorizeChatWork</code> を1回実行して承認</li>' +
+          '<li>「デプロイを管理」→ 新しいバージョンで再デプロイ</li>' +
+          '<li>送信を使う場合は、Code.gsの <code>TOKEN</code> とアプリの合言葉を必ず設定</li>' +
+        '</ol>' +
+        '<p class="small">ChatWorkのAPIトークンはアプリやブラウザには保存されません。Apps Scriptのスクリプト プロパティにだけ保存してください。</p>' +
       '</details>' +
     '</section>' +
 
@@ -1084,6 +1175,8 @@ function bindEvents() {
       case 'stats-period': view.statsPeriod = value; render(); break;
       case 'stats-room': view.statsRoom = value; render(); break;
       case 'stats-weekly-copy': copyWeeklySurveyReport(); break;
+      case 'stats-weekly-chatwork': sendWeeklySurveyReportToChatWork(); break;
+      case 'chatwork-test': sendChatWorkTest(); break;
       case 'stats-csv': exportStatsCsv(); break;
       case 'stats-print': window.print(); break;
       case 'export-csv': exportAllCsv(); break;
@@ -1160,6 +1253,7 @@ function bindEvents() {
     if (key === 'tablet-name') { state.settings.tabletName = t.value; saveState(); return; }
     if (key === 'sheet-url') { state.settings.sheetUrl = t.value.trim(); saveState(); return; }
     if (key === 'sheet-token') { state.settings.token = t.value; saveState(); return; }
+    if (key === 'chatwork-room-id') { state.settings.chatworkRoomId = t.value.trim(); saveState(); return; }
     if (key === 'supabase-url') { state.settings.supabaseUrl = t.value.trim(); saveState(); return; }
     if (key === 'supabase-anon-key') { state.settings.supabaseAnonKey = t.value.trim(); saveState(); return; }
     if (key === 'supabase-auto-sync') { state.settings.supabaseAutoSync = t.checked; saveState(); return; }
