@@ -196,7 +196,7 @@ function inventoryView() {
 
     '<section class="inv-actions">' +
       '<button class="inv-action" data-act="inv-entry" data-value="in"><span class="inv-action-title">仕入を記録</span><span class="inv-action-sub">いつ・何個入ったか</span></button>' +
-      '<button class="inv-action" data-act="inv-entry" data-value="return"><span class="inv-action-title">回収を記録</span><span class="inv-action-sub">日報用（在庫は変えません）</span></button>' +
+      '<button class="inv-action" data-act="inv-entry" data-value="return"><span class="inv-action-title">回収を記録</span><span class="inv-action-sub">在庫に加算（補充）</span></button>' +
       '<button class="inv-action" data-act="inv-report"><span class="inv-action-title">日報を作成</span><span class="inv-action-sub">コピーしてチャットへ</span></button>' +
       '<button class="inv-action" data-act="product-add"><span class="inv-action-title">商品登録</span><span class="inv-action-sub">野菜・コーヒーの種類</span></button>' +
       '<button class="inv-action" data-act="inv-history"><span class="inv-action-title">履歴</span><span class="inv-action-sub">提供・仕入・回収の記録</span></button>' +
@@ -305,7 +305,7 @@ function entryView(screen) {
       '<label class="field"><span>' + (kind === 'in' ? '仕入先・メモ' : 'メモ（任意）') + '</span>' +
         '<input class="input" type="text" data-input="entry-memo" value="' + esc(e.memo) + '" placeholder="' + (kind === 'in' ? '例）○○青果' : '例）返却分') + '"></label>' +
       (kind === 'return'
-        ? '<p class="inv-note">回収は日報に記録されますが、在庫数は変わりません。</p>'
+        ? '<p class="inv-note">回収した分は在庫に加算されます（在庫補充）。</p>'
         : '') +
     '</section>' +
 

@@ -109,7 +109,7 @@ function sortedProducts(includeInactive) {
 
 function stockQty(productId, uptoDate) {
   return state.stockMoves
-    .filter(m => m.productId === productId && m.type !== 'return' && (!uptoDate || m.date <= uptoDate))
+    .filter(m => m.productId === productId && (!uptoDate || m.date <= uptoDate))
     .reduce((sum, m) => sum + (m.type === 'out' ? -m.qty : m.qty), 0);
 }
 
