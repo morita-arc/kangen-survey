@@ -515,6 +515,40 @@ function statsFiltered() {
   return { range, list };
 }
 
+function copyPlainText(text, message) {
+  const done = () => toast(message || 'コピーしました');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); }
+      catch (e) { toast('コピーできませんでした'); }
+      ta.remove();
+    });
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); }
+    catch (e) { toast('コピーできませんでした'); }
+    ta.remove();
+  }
+}
+
+function copyWeeklySurveyReport() {
+  const text = buildWeeklySurveyReport(state.submissions, new Date(), state.settings.weekStart);
+  const range = periodRange('week', new Date(), state.settings.weekStart);
+  const count = state.submissions.filter(s => inRange(s.date, range.from, range.to)).length;
+  copyPlainText(text, '今週の報告をコピーしました（' + count + '件）');
+}
+
 function statsView() {
   const { range, list } = statsFiltered();
   const agg = aggregate(list, view.statsRoom);
@@ -591,6 +625,7 @@ function statsView() {
         '<p>' + esc(c.text) + '</p></li>').join('') + '</ul></section>' : '') +
 
     '<div class="stats-actions">' +
+      '<button class="btn primary" data-act="stats-weekly-copy">今週の報告をコピー</button>' +
       '<button class="btn" data-act="stats-csv">CSVダウンロード</button>' +
       '<button class="btn" data-act="stats-print">印刷 / PDF</button>' +
       '<button class="btn' + (state.settings.sheetUrl ? '' : ' hidden') + '" data-act="sync-all">シートと同期</button>' +
@@ -1025,6 +1060,7 @@ function bindEvents() {
       }
       case 'stats-period': view.statsPeriod = value; render(); break;
       case 'stats-room': view.statsRoom = value; render(); break;
+      case 'stats-weekly-copy': copyWeeklySurveyReport(); break;
       case 'stats-csv': exportStatsCsv(); break;
       case 'stats-print': window.print(); break;
       case 'export-csv': exportAllCsv(); break;

@@ -206,6 +206,122 @@ function surveyQuestionsForStats() {
   return [Q.shower, Q.pack, Q.drink, Q.wear, Q.temp, Q.stay, Q.hydrogen, Q.healingWear, Q.option, Q.condition, Q.memo];
 }
 
+const WEEKLY_REPORT_STD = [
+  { title: 'パックについて', qid: 'pack', options: [
+    { label: '炭酸ガスパック', values: ['炭酸ガスパック'] },
+    { label: 'アロマパック', values: ['アロマパック'] }
+  ] },
+  { title: 'ドリンク', qid: 'drink', options: [
+    { label: 'シリカ水', values: ['シリカ水'] },
+    { label: 'ゆずサイダー', values: ['ゆずサイダー'] },
+    { label: 'ミネラルウォーター', values: ['ミネラルウォーター'] },
+    { label: 'コピ　ルアク', values: ['コピ・ルアック（ジャコウネコ珈琲）※HOTのみ', 'コピ・ルアック', 'コピ　ルアク'] }
+  ] },
+  { title: '服装', qid: 'wear', options: [
+    { label: '使い捨て紙ショーツ', values: ['使い捨て紙ショーツなど（色は茶色です）', '使い捨て紙ショーツ'] },
+    { label: '短パン', values: ['短パン'] },
+    { label: 'Tシャツ', values: ['Tシャツ'] },
+    { label: 'Tシャツ・短パン', values: ['Tシャツ・短パン'] }
+  ] },
+  { title: '温度調整', qid: 'temp', options: [
+    { label: 'マットあり（温度高め）', values: ['マットあり（温度高め）'] },
+    { label: 'マットなし（温度低め）', values: ['マットなし（温度低め）'] }
+  ] },
+  { title: '桶内の過ごし方', qid: 'stay', options: [
+    { label: 'ご自身のスマホ持込', values: ['ご自身のスマホ持込（防水ケースのレンタルあり）', 'ご自身のスマホ持込'] },
+    { label: 'iPadでの動画視聴', values: ['iPadでの動画視聴'] },
+    { label: 'iPadでの音楽視聴', values: ['iPadでの音楽視聴'] },
+    { label: 'ヒーリング音楽', values: ['ヒーリング音楽'] }
+  ] },
+  { title: 'ヒーリングルームでの服装', qid: 'healingWear', options: [
+    { label: 'Tシャツ・短パン', values: ['Tシャツ・短パン'] },
+    { label: 'バスローブ', values: ['バスローブ'] }
+  ] },
+  { title: '水素吸引', qid: 'hydrogen', options: [
+    { label: '入酵時', values: ['入酵時'] },
+    { label: 'ヒーリング時', values: ['ヒーリング時'] }
+  ] },
+  { title: 'お渡し特典', qid: 'option', options: [
+    { label: '野菜：', values: ['水耕栽培の野菜'] },
+    { label: 'コーヒー：', values: ['コピ・ルアック（ジャコウネコ珈琲）※ドリップパック', 'コピ・ルアック（ドリップパック）'] }
+  ] }
+];
+
+const WEEKLY_REPORT_VIP = [
+  { title: 'シャワーについて', qid: 'shower', options: [
+    { label: '通常シャワー', values: ['通常シャワー'] },
+    { label: '炭酸シャワー', values: ['炭酸シャワー（RIVIERA CUBE）', '炭酸シャワー'] },
+    { label: '炭酸アイスバス', values: ['炭酸アイスバス'] }
+  ] },
+  { title: 'パックについて', qid: 'pack', options: [
+    { label: '炭酸ガスパック', values: ['炭酸ガスパック'] },
+    { label: 'アロマパック', values: ['アロマパック'] }
+  ] },
+  { title: 'ドリンクについて', qid: 'drink', options: [
+    { label: 'シリカ水', values: ['シリカ水'] },
+    { label: 'ライムオレンジ', values: ['ライムオレンジ'] },
+    { label: 'ミネラルウォーター', values: ['ミネラルウォーター'] },
+    { label: 'コピ・ルアック', values: ['コピ・ルアック（ジャコウネコ珈琲）※HOTのみ', 'コピ・ルアック'] }
+  ] },
+  { title: '服装', qid: 'wear', options: [
+    { label: '使い捨て紙ショーツ', values: ['使い捨て紙ショーツなど（色は茶色です）', '使い捨て紙ショーツ'] },
+    { label: '短パン', values: ['短パン'] },
+    { label: 'Tシャツ', values: ['Tシャツ'] },
+    { label: 'Tシャツ・短パン', values: ['Tシャツ・短パン'] }
+  ] },
+  { title: '温度調整', qid: 'temp', options: [
+    { label: 'マットあり（温度高め）', values: ['マットあり（温度高め）'] },
+    { label: 'マットなし（温度低め）', values: ['マットなし（温度低め）'] }
+  ] },
+  { title: '桶内の過ごし方', qid: 'stay', options: [
+    { label: 'ご自身のスマホ持込', values: ['ご自身のスマホ持込（防水ケースのレンタルあり）', 'ご自身のスマホ持込'] },
+    { label: 'ヒーリング音楽', values: ['ヒーリング音楽'] },
+    { label: 'iPadでの動画視聴', values: ['iPadでの動画視聴'] },
+    { label: 'iPadでの音楽視聴', values: ['iPadでの音楽視聴'] }
+  ] },
+  { title: 'ヒーリングルームでの服装', qid: 'healingWear', options: [
+    { label: 'Tシャツ・短パン', values: ['Tシャツ・短パン'] },
+    { label: 'バスローブ', values: ['バスローブ'] }
+  ] },
+  { title: '水素吸引', qid: 'hydrogen', options: [
+    { label: '入酵時', values: ['入酵時'] },
+    { label: 'ヒーリング時', values: ['ヒーリング時'] }
+  ] },
+  { title: 'お渡し特典', qid: 'option', options: [
+    { label: '野菜：', values: ['水耕栽培の野菜'] },
+    { label: 'コーヒー：', values: ['コピ・ルアック（ジャコウネコ珈琲）※ドリップパック', 'コピ・ルアック（ドリップパック）'] }
+  ] }
+];
+
+function weeklyReportCount(subs, qid, values) {
+  return subs.filter(s => answerList(s, qid).some(v => values.indexOf(v) >= 0)).length;
+}
+
+function appendWeeklyReportSections(lines, subs, sections) {
+  sections.forEach(section => {
+    lines.push('■' + section.title + '\t');
+    section.options.forEach(opt => {
+      lines.push(opt.label + '\t' + weeklyReportCount(subs, section.qid, opt.values));
+    });
+    lines.push('');
+  });
+}
+
+function buildWeeklySurveyReport(subs, now, weekStart) {
+  const from = startOfWeek(now || new Date(), weekStart || 6);
+  const to = new Date(from); to.setDate(from.getDate() + 7);
+  const list = (subs || []).filter(s => inRange(s.date, from, to));
+  const std = list.filter(s => s.room === 'std');
+  const vip = list.filter(s => s.room === 'vip');
+  const lines = ['お客様への実施確認済みです。'];
+  lines.push('・スタンダード' + std.length + '名');
+  appendWeeklyReportSections(lines, std, WEEKLY_REPORT_STD);
+  lines.push('・VIP  ：' + vip.length + '名');
+  appendWeeklyReportSections(lines, vip, WEEKLY_REPORT_VIP);
+  return lines.join('\n').replace(/\n+$/, '');
+}
+
+
 function weeklySummary(subs, weekStart, weeksBack) {
   const count = weeksBack || 8;
   const thisWeek = startOfWeek(new Date(), weekStart);
